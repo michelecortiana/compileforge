@@ -30,7 +30,7 @@ jobs:
         docker build -t compiler-image ./compiler-image
 
     - name: Avvia infrastruttura con Docker Compose
-      run: docker-compose up -d --build
+      run: docker compose up -d --build
 
     - name: Attendi l'avvio dei servizi
       run: |
@@ -94,4 +94,4 @@ jobs:
 
     - name: Spegni infrastruttura e pulisci
       if: always()
-      run: docker-compose down -v
+      run: docker compose down -v
