@@ -1,20 +1,17 @@
 FROM node:20-alpine
 
-# Imposta la directory di lavoro dentro il container
+# Imposta la directory di lavoro
 WORKDIR /app
 
-# Copia i file delle dipendenze e installale
+# Copia e installa le dipendenze (incluse quelle di dev per avere tsx)
 COPY package*.json ./
 RUN npm install
 
-# Copia tutto il resto del codice
+# Copia il resto del codice
 COPY . .
-
-# Compila il codice TypeScript (assicurati di avere lo script "build" nel package.json)
-RUN npm run build
 
 # Esponi la porta usata dal Gateway
 EXPOSE 8080
 
-# Comando per avviare l'app
-CMD ["npm", "start"]
+# Avvia usando tsx direttamente sul file TypeScript
+CMD ["npx", "tsx", "src/server.ts"]
