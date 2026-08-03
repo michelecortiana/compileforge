@@ -14,13 +14,14 @@ jobs:
     - name: Checkout del codice
       uses: actions/checkout@v4
 
+
     - name: Prepara file .env per i container
       run: |
         echo "PORT=8080" > .env
         echo "HOST=0.0.0.0" >> .env
         echo "API_KEY=test-api-key-123" >> .env
         echo "METRICS_TOKEN=test-metrics-token" >> .env
-        echo "DATABASE_URL=postgresql://admin:pass@db:5432/compileforge" >> .env
+        echo "DATABASE_URL=postgresql://admin:pass@postgres:5432/compileforge" >> .env
         echo "REDIS_URL=redis://redis:6379" >> .env
         echo "RABBITMQ_URL=amqp://admin:pass@rabbitmq:5672" >> .env
 
@@ -39,6 +40,20 @@ jobs:
         echo "Gateway pronto!"
         # Una breve pausa per dar tempo a RabbitMQ e Worker di allinearsi
         sleep 5
+
+    # 👇 ECCO LO STEP NUOVO DA AGGIUNGERE 👇
+    - name: Esegui migrazioni Database
+      run: |
+        echo "Sincronizzando lo schema del database con Drizzle..."
+        docker exec gateway npx drizzle-kit push
+    # 👆 FINE DELLO STEP NUOVO 👆
+
+    - name: Test d'Integrazione End-to-End (E2E)
+      run: |
+        # 1. Invia il job al Gateway con la chiave di test
+        RESPONSE=$(curl -s -X POST http://localhost:8080/compile \
+
+    # ... [Tutto il resto del file sopra rimane identico] ...
 
     - name: Test d'Integrazione End-to-End (E2E)
       run: |
@@ -91,9 +106,11 @@ jobs:
         echo "❌ Timeout: Il job non è passato allo stato 'completed' in tempo utile."
         exit 1
 
+    # 👇 ECCO DOVE INSERIRE IL BLOCCO DEI LOG 👇
     - name: Stampa log di Docker in caso di errore
       if: failure()
       run: docker compose logs
+    # 👆 ------------------------------------- 👆
 
     - name: Spegni infrastruttura e pulisci
       if: always()
