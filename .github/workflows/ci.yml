@@ -36,10 +36,12 @@ jobs:
       run: |
         echo "Attendendo il Gateway sulla porta 8080..."
         # Utilizza l'endpoint delle metriche protetto per capire quando Fastify è pronto
-        timeout 30 bash -c 'until curl --silent -f http://localhost:8080/metrics -H "Authorization: Bearer test-metrics-token" > /dev/null; do sleep 2; done'
+        timeout 90 bash -c 'until curl --silent -f http://localhost:8080/metrics -H "Authorization: Bearer test-metrics-token" > /dev/null; do sleep 2; done'
         echo "Gateway pronto!"
         # Una breve pausa per dar tempo a RabbitMQ e Worker di allinearsi
         sleep 5
+
+    # ... [Tutto il resto del file sopra rimane identico] ...
 
     - name: Test d'Integrazione End-to-End (E2E)
       run: |
@@ -91,6 +93,12 @@ jobs:
 
         echo "❌ Timeout: Il job non è passato allo stato 'completed' in tempo utile."
         exit 1
+
+    # 👇 ECCO DOVE INSERIRE IL BLOCCO DEI LOG 👇
+    - name: Stampa log di Docker in caso di errore
+      if: failure()
+      run: docker compose logs
+    # 👆 ------------------------------------- 👆
 
     - name: Spegni infrastruttura e pulisci
       if: always()
