@@ -222,7 +222,21 @@ const start = async () => {
         await redisClient.ping();
         console.log('Connessione a Redis verificata');
 
-        await initBroker();
+        // --- INIZIO LOGICA DI RETRY ---
+        let retries = 5;
+        while (retries > 0) {
+            try {
+                await initBroker();
+                console.log('✅ Connessione a RabbitMQ verificata');
+                break;
+            } catch (error) {
+                console.error(`⏳ Errore RabbitMQ nel Gateway. Tentativi rimasti: ${retries - 1}`);
+                retries -= 1;
+                if (retries === 0) throw error;
+                await new Promise(res => setTimeout(res, 3000));
+            }
+        }
+        // --- FINE LOGICA DI RETRY ---
 
         await app.register(fastifyRateLimit, {
             max: 100,

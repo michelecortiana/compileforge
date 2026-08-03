@@ -26,6 +26,11 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./rabbitmq_enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 10s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -68,6 +73,9 @@ services:
       - db
       - redis
       - rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
   # NUOVO: Aggiunta del Worker
   worker:
@@ -83,6 +91,9 @@ services:
     volumes:
       # Cruciale: permette al Worker di lanciare la compiler-image sull'host
       - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
 volumes:
   pgdata:

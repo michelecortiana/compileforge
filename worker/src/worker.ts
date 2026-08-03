@@ -55,8 +55,28 @@ app.listen(9090, '0.0.0.0', () => console.log('Worker metrics esposte su porta 9
 
 async function startWorker() {
     try {
-        const channel = await initBroker();
+        // --- INIZIO LOGICA DI RETRY ---
+        let channel;
+        let retries = 5;
         
+        while (retries > 0) {
+            try {
+                channel = await initBroker();
+                console.log('✅ Connesso a RabbitMQ (Worker)!');
+                break; // Usciamo dal ciclo se la connessione ha successo
+            } catch (error) {
+                console.error(`⏳ Errore RabbitMQ nel Worker. Tentativi rimasti: ${retries - 1}`);
+                retries -= 1;
+                if (retries === 0) throw error; // Se finiscono i tentativi, lancia l'errore fatale
+                await new Promise(res => setTimeout(res, 3000)); // Aspetta 3 secondi prima di riprovare
+            }
+        }
+        // --- FINE LOGICA DI RETRY ---
+
+        // Il resto della tua funzione rimane identico:
+        // (Nota: dobbiamo assicurarci che channel non sia undefined)
+        if (!channel) throw new Error("Canale RabbitMQ non inizializzato");
+
         await channel.prefetch(1);
         console.log('Worker avviato. In attesa di job nella coda "compile_jobs"...');
 
