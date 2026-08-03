@@ -69,11 +69,12 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    # UNIAMO TUTTO IN UN UNICO BLOCCO depends_on
     depends_on:
-      - db
-      - redis
-      - rabbitmq
-    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
       rabbitmq:
         condition: service_healthy
 
@@ -85,13 +86,13 @@ services:
       - "9090:9090"
     env_file:
       - .env
-    depends_on:
-      - redis
-      - rabbitmq
     volumes:
       # Cruciale: permette al Worker di lanciare la compiler-image sull'host
       - /var/run/docker.sock:/var/run/docker.sock
+    # UNIAMO TUTTO IN UN UNICO BLOCCO depends_on
     depends_on:
+      redis:
+        condition: service_started
       rabbitmq:
         condition: service_healthy
 
