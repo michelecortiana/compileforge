@@ -15,7 +15,7 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
-    hostname: rabbitmq   # <-- Fissa l'identità del nodo per Mnesia
+    hostname: rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: pass
@@ -24,8 +24,8 @@ services:
       - "15672:15672"
       - "15692:15692"
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq # <-- Persistenza per code e messaggi
-      - ./rabbitmq_enabled_plugins:/etc/rabbitmq/enabled_plugins:ro # <-- NUOVO: Abilita i plugin in modo nativo
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq_enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
 
   redis:
     image: redis:7-alpine
@@ -41,7 +41,7 @@ services:
     container_name: prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus # <-- Persistenza per lo storico metriche
+      - prometheus_data:/prometheus
     ports:
       - "9091:9090"
 
@@ -55,6 +55,34 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     ports:
       - "3000:3000"
+
+  # NUOVO: Aggiunta del Gateway
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+
+  # NUOVO: Aggiunta del Worker
+  worker:
+    build: ./worker
+    container_name: worker
+    ports:
+      - "9090:9090"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - rabbitmq
+    volumes:
+      # Cruciale: permette al Worker di lanciare la compiler-image sull'host
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   pgdata:
