@@ -1,0 +1,25 @@
+{
+    "compilerOptions": {
+      /* Impostazioni di base */
+      "target": "ES2022",                                  /* Versione di JavaScript in output */
+      "module": "CommonJS",                                /* Sistema dei moduli di Node.js */
+      "moduleResolution": "node",                          /* Come TypeScript cerca i pacchetti */
+      
+      /* Regole di sicurezza e compatibilità */
+      "strict": true,                                      /* Abilita tutti i controlli severi di TypeScript */
+      "esModuleInterop": true,                             /* RISOLVE L'ERRORE DI DOTENV E ALTRI IMPORT DI DEFAULT */
+      "skipLibCheck": true,                                /* Salta il controllo dei tipi nelle librerie (velocizza il tutto) */
+      "forceConsistentCasingInFileNames": true,            /* Evita bug legati a maiuscole/minuscole nei nomi dei file */
+      
+      /* Struttura delle cartelle */
+      "rootDir": "./src",                                  /* Cartella in cui si trovano i file .ts */
+      "outDir": "./dist"                                   /* Cartella in cui verranno salvati i file .js compilati (in futuro) */
+    },
+    "include": [
+      "src/**/*"
+    ],
+    "exclude": [
+      "node_modules",
+      "**/*.spec.ts"
+    ]
+  }

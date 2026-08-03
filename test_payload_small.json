@@ -1,0 +1,4 @@
+{
+  "language": "c",
+  "source_code": "struct SensorData {\n    int id;\n    float pressure;\n};\n\nint main() {\n    struct SensorData sensor;\n    sensor.id = 101;\n    sensor.pressure = 14.7;\n    printf(\"Sensore ID: %d, Pressione: %f\\n\", sensor.id, sensor.pressure);\n    return 0;\n}\n"
+}

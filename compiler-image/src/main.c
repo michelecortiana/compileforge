@@ -6,28 +6,32 @@
 #include "../include/backend.h" 
 
 int main(int argc, char** argv) {
-    //controllo degli argomenti da terminale
     if (argc < 2) {
         printf("Errore, devi passare un file sorgente\n");
-        printf("Esempio: %s examples/mio_test.c\n", argv[0]);
+        printf("Esempio: %s examples/mio_test.c [--no-link]\n", argv[0]);
         return 1;
     }
 
     const char* file_input = argv[1];
+    int no_link = 0;
 
-    //apertura e lettura dinamica del file sorgente
+    // Controlliamo se è stato passato il flag --no-link
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "--no-link") == 0) {
+            no_link = 1;
+        }
+    }
+
     FILE* file = fopen(file_input, "rb");
     if (!file) {
         printf("Errore: impossibile aprire il file '%s'\n", file_input);
         return 1;
     }
 
-    //calcolo della dimensione del file
     fseek(file, 0, SEEK_END);
     long file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    //allocazione del buffer e lettura
     char* codice_sorgente = malloc(file_size + 1);
     if (!codice_sorgente) {
         printf("Errore: Memoria insufficiente per caricare il file.\n");
@@ -40,7 +44,6 @@ int main(int argc, char** argv) {
 
     printf("--- Avvio Compilatore su: %s ---\n", file_input);
 
-    //flusso di compilazione (Frontend e Backend)
     init_parser(codice_sorgente);
     AST_Node* ast = parse_program();
 
@@ -53,7 +56,8 @@ int main(int argc, char** argv) {
 
     optimize_ast(ast);
 
-    //generazione intermedia e assembly
+    // Usiamo PERCORSI RELATIVI. In Docker, WORKDIR è /app, quindi verranno 
+    // scritti esattamente nel volume mappato dal worker.
     generate_ir_program(ast);
     print_ir_to_file("output.ir"); 
     printf("[2/3] Generazione IR completata (salvata in output.ir).\n");
@@ -61,22 +65,22 @@ int main(int argc, char** argv) {
     generate_x86_64(ir_head, "output.s"); 
     printf("[3/3] Generazione x86-64 completata (salvata in output.s).\n");
 
-    //pulizia della stringa sorgente
     free(codice_sorgente);
 
-    //automaizzazione di GCC
-    printf("\nInvocazione di GCC per l'assemblaggio...\n");
-    
-    //il compilatore lancia il comando di linking per conto dell'utente
-    // Aggiungi -z noexecstack
-int gcc_status = system("gcc -z noexecstack -no-pie output.s -o programma_eseguibile");
-    
-    if (gcc_status == 0) {
-        printf("\nCompilazione completata senza errori!\n");
-        printf("-> Per testarlo digita: ./programma_eseguibile\n\n");
+    // Fase 4: Linking Condizionale
+    if (!no_link) {
+        printf("[4/4] Avvio linking con GCC...\n");
+        int ret = system("gcc -z noexecstack -no-pie output.s -o output.exe");
+        if (ret != 0) {
+            printf("Errore: Il linking con GCC è fallito.\n");
+        } else {
+            printf("Linking completato (eseguibile: output.exe).\n");
+        }
     } else {
-        printf("\nErrore: Il linking con GCC è fallito.\n");
+        printf("[4/4] Linking ignorato (--no-link attivato).\n");
     }
+
+    printf("\nCompilazione terminata. Pronti per la restituzione.\n");
 
     return 0;
 }

@@ -1,1 +1,38 @@
+# ========================
+# Dipendenze Node.js
+# ========================
 node_modules/
+
+# ========================
+# Variabili d'Ambiente e Segreti
+# ========================
+# Ignora tutti i file .env ovunque si trovino
+.env
+.env.*
+# Eccezione: NON ignorare i file di esempio
+!.env.example
+
+# ========================
+# File generati da TS/Compilazione
+# ========================
+dist/
+build/
+out/
+*.o
+*.out
+*.exe
+
+# ========================
+# Log
+# ========================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# ========================
+# File di Sistema e IDE
+# ========================
+.DS_Store
+.vscode/
+.idea/

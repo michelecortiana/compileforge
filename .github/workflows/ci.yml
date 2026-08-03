@@ -1,0 +1,97 @@
+name: CompileForge CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout del codice
+      uses: actions/checkout@v4
+
+
+    - name: Prepara file .env per i container
+      run: |
+        echo "PORT=8080" > .env
+        echo "HOST=0.0.0.0" >> .env
+        echo "API_KEY=test-api-key-123" >> .env
+        echo "METRICS_TOKEN=test-metrics-token" >> .env
+        echo "DATABASE_URL=postgresql://admin:pass@postgres:5432/compileforge" >> .env
+        echo "REDIS_URL=redis://redis:6379" >> .env
+        echo "RABBITMQ_URL=amqp://admin:pass@rabbitmq:5672" >> .env
+
+    - name: Build dell'immagine del compilatore (Docker-in-Docker)
+      run: |
+        docker build -t compiler-image ./compiler-image
+
+    - name: Avvia infrastruttura con Docker Compose
+      run: docker-compose up -d --build
+
+    - name: Attendi l'avvio dei servizi
+      run: |
+        echo "Attendendo il Gateway sulla porta 8080..."
+        # Utilizza l'endpoint delle metriche protetto per capire quando Fastify è pronto
+        timeout 30 bash -c 'until curl --silent -f http://localhost:8080/metrics -H "Authorization: Bearer test-metrics-token" > /dev/null; do sleep 2; done'
+        echo "Gateway pronto!"
+        # Una breve pausa per dar tempo a RabbitMQ e Worker di allinearsi
+        sleep 5
+
+    - name: Test d'Integrazione End-to-End (E2E)
+      run: |
+        # 1. Invia il job al Gateway con la chiave di test
+        RESPONSE=$(curl -s -X POST http://localhost:8080/compile \
+          -H "Content-Type: application/json" \
+          -H "x-api-key: test-api-key-123" \
+          -d '{
+            "language": "c",
+            "source_code": "int main() { return 0; }"
+          }')
+
+        # Estrai il job_id usando jq
+        JOB_ID=$(echo $RESPONSE | jq -r '.job_id')
+        
+        if [ -z "$JOB_ID" ] || [ "$JOB_ID" == "null" ]; then
+          echo "❌ Errore: Nessun job_id restituito."
+          echo "Risposta Gateway: $RESPONSE"
+          exit 1
+        fi
+        
+        echo "✅ Job inviato con successo. ID: $JOB_ID"
+
+        # 2. Polling per verificare lo status finale
+        MAX_ATTEMPTS=15
+        ATTEMPT=1
+        STATUS="pending"
+
+        while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+          STATUS_RESP=$(curl -s -X GET http://localhost:8080/status/$JOB_ID)
+          STATUS=$(echo $STATUS_RESP | jq -r '.status')
+          
+          echo "Tentativo $ATTEMPT: Stato = $STATUS"
+          
+          if [ "$STATUS" = "completed" ]; then
+            echo "✅ Test E2E superato! Compilazione andata a buon fine."
+            exit 0
+          fi
+          
+          if [ "$STATUS" = "failed" ]; then
+            echo "❌ Test E2E fallito! La compilazione ha riportato un errore."
+            echo "Dettagli: $STATUS_RESP"
+            exit 1
+          fi
+          
+          sleep 2
+          ATTEMPT=$((ATTEMPT+1))
+        done
+
+        echo "❌ Timeout: Il job non è passato allo stato 'completed' in tempo utile."
+        exit 1
+
+    - name: Spegni infrastruttura e pulisci
+      if: always()
+      run: docker-compose down -v
