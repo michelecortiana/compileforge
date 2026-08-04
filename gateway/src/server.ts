@@ -216,27 +216,44 @@ const start = async () => {
     try {
         console.log('⏳ Avvio dei controlli di sistema...');
 
-        await db.execute(sql`SELECT 1`);
-        console.log('Connessione a Postgres verificata');
-
-        await redisClient.ping();
-        console.log('Connessione a Redis verificata');
-
-        // --- INIZIO LOGICA DI RETRY ---
-        let retries = 5;
-        while (retries > 0) {
+        // --- INIZIO LOGICA DI RETRY POSTGRES ---
+        let dbRetries = 5;
+        while (dbRetries > 0) {
             try {
-                await initBroker();
-                console.log('✅ Connessione a RabbitMQ verificata');
+                await db.execute(sql`SELECT 1`);
+                console.log('✅ Connessione a Postgres verificata');
                 break;
             } catch (error) {
-                console.error(`⏳ Errore RabbitMQ nel Gateway. Tentativi rimasti: ${retries - 1}`);
-                retries -= 1;
-                if (retries === 0) throw error;
+                console.error(`⏳ Errore connessione Postgres. Tentativi rimasti: ${dbRetries - 1}`);
+                dbRetries -= 1;
+                if (dbRetries === 0) throw error;
                 await new Promise(res => setTimeout(res, 3000));
             }
         }
-        // --- FINE LOGICA DI RETRY ---
+        // --- FINE LOGICA DI RETRY POSTGRES ---
+
+        // --- INIZIO LOGICA DI RETRY REDIS ---
+        let redisRetries = 5;
+        while (redisRetries > 0) {
+            try {
+                await redisClient.ping();
+                console.log('✅ Connessione a Redis verificata');
+                break;
+            } catch (error) {
+                console.error(`⏳ Errore connessione Redis. Tentativi rimasti: ${redisRetries - 1}`);
+                redisRetries -= 1;
+                if (redisRetries === 0) throw error;
+                await new Promise(res => setTimeout(res, 3000));
+            }
+        }
+
+        // --- INIZIO INIZIALIZZAZIONE RABBITMQ ---
+        console.log('⏳ Connessione a RabbitMQ in corso...');
+        await initBroker(); // Assicurati che dentro initBroker() ci sia la sua logica di retry che avevi fatto prima!
+        console.log('✅ Connessione a RabbitMQ verificata');
+        // --- FINE INIZIALIZZAZIONE RABBITMQ ---
+
+
 
         await app.register(fastifyRateLimit, {
             max: 100,

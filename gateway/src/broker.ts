@@ -11,27 +11,33 @@ if (!rabbitmqUrl) {
 export let channel: amqp.Channel;
 
 export const initBroker = async () => {
-    try {
-        const connection = await amqp.connect(rabbitmqUrl);
-        channel = await connection.createChannel();
-        
-        // 1. Dichiara la DLQ (esattamente come nel worker)
-        await channel.assertQueue('compile_jobs_dlq', { durable: true });
+    let retries = 5;
+    
+    while (retries > 0) {
+        try {
+            const connection = await amqp.connect(rabbitmqUrl);
+            channel = await connection.createChannel();
+            
+            // 1. Dichiara la DLQ (esattamente come nel worker)
+            await channel.assertQueue('compile_jobs_dlq', { durable: true });
 
-        // 2. Dichiara la coda principale con i parametri per la DLQ (esattamente come nel worker)
-        await channel.assertQueue('compile_jobs', { 
-            durable: true,
-            arguments: {
-                'x-dead-letter-exchange': '',
-                'x-dead-letter-routing-key': 'compile_jobs_dlq'
-            }
-        });
+            // 2. Dichiara la coda principale con i parametri per la DLQ
+            await channel.assertQueue('compile_jobs', { 
+                durable: true,
+                arguments: {
+                    'x-dead-letter-exchange': '',
+                    'x-dead-letter-routing-key': 'compile_jobs_dlq'
+                }
+            });
 
-        console.log('RabbitMQ connesso e coda "compile_jobs" pronta (con DLQ allineata)');
-        return channel;
-    } catch (error) {
-        console.error('Errore di connessione a RabbitMQ:', error);
-        throw error;
+            console.log('RabbitMQ connesso e coda "compile_jobs" pronta (con DLQ allineata)');
+            return channel;
+        } catch (error) {
+            console.error(`⏳ Errore di connessione a RabbitMQ. Tentativi rimasti: ${retries - 1}`);
+            retries -= 1;
+            if (retries === 0) throw error;
+            await new Promise(res => setTimeout(res, 3000)); // Aspetta 3 secondi prima di riprovare
+        }
     }
 };
 
