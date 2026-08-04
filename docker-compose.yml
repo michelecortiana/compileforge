@@ -61,7 +61,6 @@ services:
     ports:
       - "3000:3000"
 
-  # NUOVO: Aggiunta del Gateway
   gateway:
     build: ./gateway
     container_name: gateway
@@ -69,7 +68,6 @@ services:
       - "8080:8080"
     env_file:
       - .env
-    # UNIAMO TUTTO IN UN UNICO BLOCCO depends_on
     depends_on:
       db:
         condition: service_started
@@ -78,7 +76,6 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # NUOVO: Aggiunta del Worker
   worker:
     build: ./worker
     container_name: worker
@@ -86,10 +83,14 @@ services:
       - "9090:9090"
     env_file:
       - .env
+    # 👇 NUOVO: Aggiunta variabile d'ambiente per il path host
+    environment:
+      HOST_TMP_DIR: ${PWD}/worker-tmp
     volumes:
       # Cruciale: permette al Worker di lanciare la compiler-image sull'host
       - /var/run/docker.sock:/var/run/docker.sock
-    # UNIAMO TUTTO IN UN UNICO BLOCCO depends_on
+      # 👇 NUOVO: Bind mount della cartella temporanea condivisa
+      - ${PWD}/worker-tmp:/tmp/compileforge
     depends_on:
       redis:
         condition: service_started

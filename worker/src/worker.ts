@@ -15,11 +15,19 @@ import { redisClient } from './redis';
 
 const execAsync = util.promisify(exec);
 
-// === CONTROLLO DI SICUREZZA FAIL-FAST ===
+// === CONTROLLI DI SICUREZZA E VARIABILI GLOBALI ===
 const METRICS_TOKEN = process.env.METRICS_TOKEN;
 if (!METRICS_TOKEN) {
     throw new Error("ERRORE CRITICO: METRICS_TOKEN non è definita nelle variabili d'ambiente.");
 }
+
+// 👇 NUOVO: Path base per la logica Docker-outside-of-Docker
+const CONTAINER_TMP_BASE = '/tmp/compileforge'; // Usato da fs.writeFile/readFile dentro il Worker
+const HOST_TMP_BASE = process.env.HOST_TMP_DIR; // Usato SOLO per il flag -v di docker run
+if (!HOST_TMP_BASE) {
+    throw new Error("ERRORE CRITICO: HOST_TMP_DIR non definita — necessaria per Docker-outside-of-Docker.");
+}
+// 👆 ----------------------------------------------------
 
 client.collectDefaultMetrics();
 
@@ -73,8 +81,6 @@ async function startWorker() {
         }
         // --- FINE LOGICA DI RETRY ---
 
-        // Il resto della tua funzione rimane identico:
-        // (Nota: dobbiamo assicurarci che channel non sia undefined)
         if (!channel) throw new Error("Canale RabbitMQ non inizializzato");
 
         await channel.prefetch(1);
@@ -90,26 +96,31 @@ async function startWorker() {
                 console.log(`Elaborazione Job ID: ${jobId} iniziata...`);
                 const endTimer = jobDurationHistogram.startTimer();
 
-                // 5. Creazione file e cartelle temporanee
-                const filePath = path.join('/tmp', `${jobId}.c`);
-                const outputDir = path.join('/tmp', `output-${jobId}`);
+                // 👇 NUOVO: 5. Creazione file e cartelle temporanee usando i path del CONTAINER
+                const filePath = path.join(CONTAINER_TMP_BASE, `${jobId}.c`);
+                const outputDir = path.join(CONTAINER_TMP_BASE, `output-${jobId}`);
 
+                await fs.mkdir(CONTAINER_TMP_BASE, { recursive: true }); // assicurati che la base esista
                 await fs.writeFile(filePath, sourceCode);
                 await fs.mkdir(outputDir, { recursive: true });
                 // Diamo i permessi di scrittura completi alla cartella condivisa per evitare blocchi Docker
                 await execAsync(`chmod 777 ${outputDir}`);
-                console.log(`Ambiente preparato in /tmp per il job ${jobId}`);
+                console.log(`Ambiente preparato in ${CONTAINER_TMP_BASE} per il job ${jobId}`);
+                // 👆 --------------------------------------------------------------------
 
-                // 6. Esecuzione Docker (aggiunto --read-only e volume output)
-                // 6. Esecuzione Docker (aggiunto --read-only, --tmpfs e volume output)
+                // 6. Esecuzione Docker
                 const timeoutMs = 10000;
                 const containerName = `runner-${jobId}`;
                 
-                // NOTA LO SPAZIO FINALE AGGIUNTO DOPO 10m
+                // 👇 NUOVO: Percorsi HOST corrispondenti, da passare a `docker run -v`
+                const hostFilePath = path.join(HOST_TMP_BASE as string, `${jobId}.c`);
+                const hostOutputDir = path.join(HOST_TMP_BASE as string, `output-${jobId}`);
+
                 const command = `docker run --rm --name ${containerName} --network none --memory=256m --cpus=0.5 --pids-limit=64 --cap-drop ALL --read-only --tmpfs /tmp:size=10m ` +
-                `-v ${filePath}:/input/code.c:ro ` +   // sorgente in una cartella separata, sola lettura
-                `-v ${outputDir}:/app ` +              // l'intera /app (dove il compilatore scrive) è ora il volume scrivibile
-                `compiler-image /input/code.c --no-link`;
+                    `-v ${hostFilePath}:/input/code.c:ro ` +   // sorgente in una cartella separata vista dall'host
+                    `-v ${hostOutputDir}:/app ` +              // volume scrivibile visto dall'host
+                    `compiler-image /input/code.c --no-link`;
+                // 👆 --------------------------------------------------------------------
 
                 let finalStatus: 'completed' | 'failed' = 'completed';
                 let finalOutput = '';
@@ -126,7 +137,7 @@ async function startWorker() {
                     }
                 }
 
-                // Leggiamo i file reali generati dal compilatore
+                // Leggiamo i file reali generati dal compilatore (usando sempre path del CONTAINER)
                 let outputIr = null;
                 let outputAsm = null;
 
@@ -141,7 +152,6 @@ async function startWorker() {
                 }
 
                 // 📊 2. REGISTRA I RISULTATI E FERMA IL TIMER QUI
-                // Usiamo finalStatus per capire se è andato tutto a buon fine
                 if (finalStatus === 'completed') {
                     jobResultsTotal.inc({ status: 'success' });
                 } else {
@@ -171,7 +181,7 @@ async function startWorker() {
                 });
                 await redisClient.publish(`job_updates:${jobId}`, updatePayload);
 
-                // Pulizia dei file temporanei
+                // Pulizia dei file temporanei (usando i path del CONTAINER)
                 await fs.unlink(filePath).catch(() => console.warn(`Impossibile eliminare ${filePath}`));
                 await fs.rm(outputDir, { recursive: true, force: true }).catch(() => console.warn(`Impossibile eliminare ${outputDir}`));
 
