@@ -19,10 +19,9 @@ jobs:
     run: |
       echo "PORT=8080" >> .env
       echo "HOST=0.0.0.0" >> .env
-      # ATTENZIONE QUI: Sostituisci "postgres" con il vero nome del servizio (es. my_postgres_db)
-      echo "DATABASE_URL=postgresql://utente:password@my_postgres_db:5432/compileforge" >> .env
+      echo "DATABASE_URL=postgresql://admin:pass@my_postgres_db:5432/compileforge" >> .env
       echo "REDIS_URL=redis://redis:6379" >> .env
-      echo "RABBITMQ_URL=amqp://utente:password@rabbitmq:5672" >> .env
+      echo "RABBITMQ_URL=amqp://admin:pass@rabbitmq:5672" >> .env
 
     - name: Build dell'immagine del compilatore (Docker-in-Docker)
       run: |
