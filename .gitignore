@@ -10,7 +10,7 @@ node_modules/
 .env
 .env.*
 # Eccezione: NON ignorare i file di esempio
-!.env.example
+.env.example
 .env.local
 
 
