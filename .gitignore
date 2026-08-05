@@ -11,6 +11,8 @@ node_modules/
 .env.*
 # Eccezione: NON ignorare i file di esempio
 !.env.example
+.env.local
+
 
 # ========================
 # File generati da TS/Compilazione
