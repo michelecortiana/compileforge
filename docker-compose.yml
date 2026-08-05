@@ -67,7 +67,7 @@ services:
     ports:
       - "8080:8080"
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       db:
         condition: service_started
@@ -82,7 +82,7 @@ services:
     ports:
       - "9090:9090"
     env_file:
-      - .env
+      - .env.docker
     # 👇 NUOVO: Aggiunta variabile d'ambiente per il path host
     environment:
       HOST_TMP_DIR: ${PWD}/worker-tmp
