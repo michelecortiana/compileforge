@@ -1,4 +1,4 @@
-import amqp from 'amqplib';
+import * as amqp from 'amqplib';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -8,17 +8,19 @@ if (!rabbitmqUrl) {
     throw new Error("ERRORE: RABBITMQ_URL non è definita nelle variabili d'ambiente. Il server non può avviarsi senza RabbitMQ.");
 }
 
-export let channel: amqp.Channel;
+// Usiamo 'any' per evitare i conflitti di TypeScript
+export let channel: any;
+export let connection: any;
 
 export const initBroker = async () => {
     let retries = 5;
     
     while (retries > 0) {
         try {
-            const connection = await amqp.connect(rabbitmqUrl);
+            connection = await amqp.connect(rabbitmqUrl);
             channel = await connection.createChannel();
             
-            // 1. Dichiara la DLQ (esattamente come nel worker)
+            // 1. Dichiara la DLQ
             await channel.assertQueue('compile_jobs_dlq', { durable: true });
 
             // 2. Dichiara la coda principale con i parametri per la DLQ
@@ -41,11 +43,21 @@ export const initBroker = async () => {
     }
 };
 
-// jobId ora è una stringa (uuid), non più un numero
 export const publishJob = async (jobId: string, sourceCode: string, language: string) => {
     if (!channel) {
         throw new Error('Canale RabbitMQ non inizializzato');
     }
     const payload = JSON.stringify({ jobId, sourceCode, language });
     channel.sendToQueue('compile_jobs', Buffer.from(payload), { persistent: true });
+};
+
+// NUOVO: Funzione per chiudere tutto pulitamente
+export const closeBroker = async () => {
+    try {
+        if (channel) await channel.close();
+        if (connection) await connection.close();
+        console.log('🔌 Connessione RabbitMQ chiusa.');
+    } catch (err) {
+        console.error('Errore durante la chiusura di RabbitMQ:', err);
+    }
 };

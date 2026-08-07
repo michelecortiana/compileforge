@@ -14,8 +14,8 @@ RUN make
 # Fase 2: Esecuzione
 FROM debian:bookworm-slim
 
-# Non installiamo più GCC qui! Ripuliamo solo la cache.
-RUN apt-get update && rm -rf /var/lib/apt/lists/*
+# 👇 CORRETTO: Installiamo gcc e libc6-dev per permettere il linking a runtime
+RUN apt-get update && apt-get install -y gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 
 # NUOVO: Creiamo il gruppo e l'utente di sistema (non privilegiato)
 RUN groupadd -r compiler_group && useradd -r -g compiler_group compiler_user

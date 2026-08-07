@@ -23,6 +23,8 @@ jobs:
         echo "RABBITMQ_URL=amqp://admin:pass@rabbitmq:5672" >> .env
         echo "API_KEY=test-api-key-123" >> .env
         echo "METRICS_TOKEN=test-metrics-token" >> .env
+        echo "HOST_TMP_DIR=/tmp/compileforge_ci" >> .env
+        mkdir -p /tmp/compileforge_ci
 
     - name: Build dell'immagine del compilatore (Docker-in-Docker)
       run: |
@@ -33,11 +35,9 @@ jobs:
 
     - name: Attendi l'avvio dei servizi
       run: |
-        echo "Attendendo il Gateway sulla porta 8080..."
-        # Utilizza l'endpoint delle metriche protetto per capire quando Fastify è pronto
-        timeout 90 bash -c 'until curl --silent -f http://localhost:8080/metrics -H "Authorization: Bearer test-metrics-token" > /dev/null; do sleep 2; done'
-        echo "Gateway pronto!"
-        # Una breve pausa per dar tempo a RabbitMQ e Worker di allinearsi
+        echo "Attendendo che l'infrastruttura sia Healthy..."
+        timeout 90 bash -c 'until curl --silent -f http://localhost:8080/health > /dev/null; do sleep 2; done'
+        echo "Gateway e servizi pronti!"
         sleep 5
 
     - name: Esegui migrazioni Database

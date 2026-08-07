@@ -1,12 +1,17 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { sql, eq } from 'drizzle-orm';
 import { PassThrough } from 'stream';
-import { db } from './db';
+// 👇 Aggiunto "pool"
+import { db, pool } from './db';
 import { redisClient } from './redis';
-import { initBroker, publishJob } from './broker';
+// 👇 Aggiunto "closeBroker" e "channel"
+import { initBroker, publishJob, closeBroker, channel } from './broker';
 import { jobsTable } from './schema';
 import fastifyRateLimit from '@fastify/rate-limit';
+import cors from '@fastify/cors';
 import client from 'prom-client';
+import fastifyStatic from '@fastify/static';
+import path from 'path';
 
 // === CONTROLLO DI SICUREZZA FAIL-FAST ===
 const API_KEY = process.env.API_KEY;
@@ -42,6 +47,43 @@ function isValidUuid(value: string): boolean {
 }
 
 async function apiRoutes(fastify: FastifyInstance) {
+
+    // === 👇 NUOVO: HEALTH CHECK ENDPOINT 👇 ===
+    fastify.get('/health', async (request, reply) => {
+        try {
+            // 1. Ping al Database (esegue una query vuota leggerissima)
+            await db.execute(sql`SELECT 1`);
+            
+            // 2. Ping a Redis
+            await redisClient.ping();
+            
+            // 3. Controllo RabbitMQ
+            if (!channel) {
+                throw new Error('Canale RabbitMQ disconnesso o non inizializzato');
+            }
+
+            // Se arriviamo qui, l'infrastruttura sta benissimo!
+            return reply.status(200).send({ 
+                status: 'ok', 
+                timestamp: new Date().toISOString(),
+                services: {
+                    database: 'up',
+                    redis: 'up',
+                    rabbitmq: 'up'
+                }
+            });
+
+        } catch (error: any) {
+            request.log.error(`Health check fallito: ${error.message}`);
+            // Ritorna 503 (Service Unavailable) se anche solo un servizio è giù
+            return reply.status(503).send({ 
+                status: 'error', 
+                message: 'Infrastruttura degradata',
+                details: error.message 
+            });
+        }
+    });
+    // === 👆 FINE HEALTH CHECK ENDPOINT 👆 ===
 
     const compileSchema = {
         body: {
@@ -201,7 +243,6 @@ async function apiRoutes(fastify: FastifyInstance) {
         // HARDENING: Protezione dell'endpoint /metrics
         const authHeader = request.headers.authorization;
         
-        // RIMOSSA LA RIGA CON IL FALLBACK. Usa direttamente la costante globale
         if (authHeader !== `Bearer ${METRICS_TOKEN}`) {
             request.log.warn('Tentativo di accesso non autorizzato a /metrics');
             return reply.status(401).send({ error: 'Unauthorized: Invalid metrics token' });
@@ -249,11 +290,22 @@ const start = async () => {
 
         // --- INIZIO INIZIALIZZAZIONE RABBITMQ ---
         console.log('⏳ Connessione a RabbitMQ in corso...');
-        await initBroker(); // Assicurati che dentro initBroker() ci sia la sua logica di retry che avevi fatto prima!
+        await initBroker(); 
         console.log('✅ Connessione a RabbitMQ verificata');
         // --- FINE INIZIALIZZAZIONE RABBITMQ ---
 
 
+        await app.register(fastifyStatic, {
+            root: '/app/downloads',
+            prefix: '/downloads/', 
+        });
+        
+        await app.register(cors, {
+            origin: '*', 
+            methods: ['GET', 'POST', 'OPTIONS'],
+            allowedHeaders: ['Content-Type', 'x-api-key', 'Authorization']
+        });
+        console.log('🌐 CORS abilitato per le comunicazioni cross-origin');
 
         await app.register(fastifyRateLimit, {
             max: 100,
@@ -276,3 +328,34 @@ const start = async () => {
 };
 
 start();
+
+const shutdown = async (signal: string) => {
+    console.log(`\n🛑 Ricevuto segnale ${signal}. Avvio Graceful Shutdown del Gateway...`);
+    
+    try {
+        // 1. Chiude Fastify (Aspetta in automatico la fine delle connessioni HTTP attive)
+        await app.close();
+        console.log('🛑 Fastify chiuso: nessuna nuova richiesta HTTP accettata. Connessioni attive terminate.');
+
+        // 2. Chiude RabbitMQ
+        await closeBroker();
+
+        // 3. Chiude Postgres
+        await pool.end();
+        console.log('🔌 Connessione Postgres chiusa.');
+
+        // 4. Chiude Redis
+        await redisClient.quit();
+        console.log('🔌 Connessione Redis chiusa.');
+
+        console.log('👋 Gateway spento con successo.');
+        process.exit(0);
+    } catch (err) {
+        console.error('Errore durante lo spegnimento del Gateway:', err);
+        process.exit(1);
+    }
+};
+
+// Intercetta i segnali di stop del container Docker o del terminale (CTRL+C)
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

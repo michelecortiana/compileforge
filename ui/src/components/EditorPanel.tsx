@@ -1,14 +1,17 @@
 import { useRef } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import Editor from '@monaco-editor/react';
+import type { ThemeMode } from '../App';
 
 interface EditorPanelProps {
   code: string;
   setCode: (value: string) => void;
+  theme: ThemeMode; // 👈 Riceve il tema corrente da App.tsx
 }
 
-const EditorPanel = ({ code, setCode }: EditorPanelProps) => {
+const EditorPanel = ({ code, setCode, theme }: EditorPanelProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isDark = theme === 'dark';
 
   // Gestisce la scrittura manuale nell'editor
   const handleEditorChange = (value: string | undefined) => {
@@ -33,7 +36,6 @@ const EditorPanel = ({ code, setCode }: EditorPanelProps) => {
     if (file) {
       readFile(file);
     }
-    // Resetta l'input per permettere di ricaricare lo stesso file
     if (event.target) {
       event.target.value = ''; 
     }
@@ -50,23 +52,23 @@ const EditorPanel = ({ code, setCode }: EditorPanelProps) => {
     }
   };
 
-  // Previene il comportamento di default per consentire il drop
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
   };
 
   return (
     <div 
-      className="flex flex-col h-full w-full bg-gray-900"
+      className={`flex flex-col h-full w-full ${isDark ? 'bg-gray-900' : 'bg-white'}`}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
-      {/* Toolbar superiore dell'Editor */}
-      <div className="flex justify-between items-center px-4 py-2 bg-gray-800 border-b border-gray-700">
-        <span className="text-sm font-mono text-gray-400">main.c</span>
+      {/* Toolbar superiore dell'Editor con colori dinamici */}
+      <div className={`flex justify-between items-center px-4 py-2 border-b ${
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'
+      }`}>
+        <span className={`text-sm font-mono ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>main.c</span>
         
         <div>
-          {/* Input file nascosto */}
           <input 
             type="file" 
             accept=".c,.txt" 
@@ -76,19 +78,23 @@ const EditorPanel = ({ code, setCode }: EditorPanelProps) => {
           />
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 rounded text-gray-200 transition-colors border border-gray-600"
+            className={`px-3 py-1.5 text-sm rounded transition-colors border ${
+              isDark 
+                ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 border-gray-600' 
+                : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-300 shadow-sm'
+            }`}
           >
             Carica File .c
           </button>
         </div>
       </div>
 
-      {/* Monaco Editor */}
+      {/* Monaco Editor con tema dinamico (vs-dark / vs) */}
       <div className="flex-1">
         <Editor
           height="100%"
           defaultLanguage="c"
-          theme="vs-dark"
+          theme={isDark ? "vs-dark" : "vs"} 
           value={code}
           onChange={handleEditorChange}
           options={{

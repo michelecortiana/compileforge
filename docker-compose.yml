@@ -75,6 +75,8 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - shared_downloads:/app/downloads
 
   worker:
     build: ./worker
@@ -87,10 +89,9 @@ services:
     environment:
       HOST_TMP_DIR: ${PWD}/worker-tmp
     volumes:
-      # Cruciale: permette al Worker di lanciare la compiler-image sull'host
       - /var/run/docker.sock:/var/run/docker.sock
-      # 👇 NUOVO: Bind mount della cartella temporanea condivisa
       - ${PWD}/worker-tmp:/tmp/compileforge
+      - shared_downloads:/app/downloads
     depends_on:
       redis:
         condition: service_started
@@ -105,3 +106,4 @@ volumes:
     driver: local
   prometheus_data: {}
   grafana_data: {}
+  shared_downloads:
