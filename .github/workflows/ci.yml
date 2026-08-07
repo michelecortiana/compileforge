@@ -16,14 +16,14 @@ jobs:
 
     - name: Prepara file .env per i container
       run: |
-        echo "PORT=8080" >> .env
-        echo "HOST=0.0.0.0" >> .env
-        echo "DATABASE_URL=postgresql://admin:pass@my_postgres_db:5432/compileforge" >> .env
-        echo "REDIS_URL=redis://redis:6379" >> .env
-        echo "RABBITMQ_URL=amqp://admin:pass@rabbitmq:5672" >> .env
-        echo "API_KEY=test-api-key-123" >> .env
-        echo "METRICS_TOKEN=test-metrics-token" >> .env
-        echo "HOST_TMP_DIR=/tmp/compileforge_ci" >> .env
+        echo "PORT=8080" >> .env.docker
+        echo "HOST=0.0.0.0" >> .env.docker
+        echo "DATABASE_URL=postgresql://admin:pass@my_postgres_db:5432/compileforge" >> .env.docker
+        echo "REDIS_URL=redis://redis:6379" >> .env.docker
+        echo "RABBITMQ_URL=amqp://admin:pass@rabbitmq:5672" >> .env.docker
+        echo "API_KEY=test-api-key-123" >> .env.docker
+        echo "METRICS_TOKEN=test-metrics-token" >> .env.docker
+        echo "HOST_TMP_DIR=/tmp/compileforge_ci" >> .env.docker
         mkdir -p /tmp/compileforge_ci
 
     - name: Build dell'immagine del compilatore (Docker-in-Docker)
