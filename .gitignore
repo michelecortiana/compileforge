@@ -10,9 +10,7 @@ node_modules/
 .env
 .env.*
 # Eccezione: NON ignorare i file di esempio
-.env.example
-.env.local
-
+!.env.example
 
 # ========================
 # File generati da TS/Compilazione

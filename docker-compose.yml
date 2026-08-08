@@ -11,6 +11,11 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d compileforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   
   rabbitmq:
     image: rabbitmq:3-management
@@ -40,6 +45,11 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     
   prometheus:
     image: prom/prometheus:latest
@@ -70,9 +80,9 @@ services:
       - .env.docker
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy    
       redis:
-        condition: service_started
+        condition: service_healthy    
       rabbitmq:
         condition: service_healthy
     volumes:
@@ -85,18 +95,19 @@ services:
       - "9090:9090"
     env_file:
       - .env.docker
-    # 👇 NUOVO: Aggiunta variabile d'ambiente per il path host
     environment:
-      HOST_TMP_DIR: ${PWD}/worker-tmp
+      HOST_TMP_DIR: ${HOST_TMP_DIR:-${PWD}/worker-tmp}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${PWD}/worker-tmp:/tmp/compileforge
+      - ${HOST_TMP_DIR:-${PWD}/worker-tmp}:/tmp/compileforge
       - shared_downloads:/app/downloads
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy    
       rabbitmq:
         condition: service_healthy
+      db:                           
+        condition: service_healthy    
 
 volumes:
   pgdata:

@@ -2,15 +2,14 @@
 
 echo "🚀 Lancio 50 job di compilazione in parallelo..."
 
-# Avvia 50 richieste in background usando &
 for i in {1..50}; do
-  curl -s -X POST http://localhost:8080/compile \
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/compile \
     -H "Content-Type: application/json" \
-    -H "X-API-Key: super-secret-key-123" \
-    -d @test_payload_small.json > /dev/null &
-done
+    -H "X-API-Key: 6a00637b22602b2512343b00d95a8327ab2f0bd0d57987e392503e85e0219cb7" \
+    -d @test_payload_small.json)
+  echo "Richiesta $i -> HTTP $STATUS"
+done | tee stress_results.log
 
-# Aspetta che tutti i processi in background finiscano
 wait
-
-echo "✅ Tutte le 50 richieste sono state inviate al Gateway!"
+FAILED=$(grep -cv "202" stress_results.log)
+echo "✅ Fatto. Richieste non accettate (diverse da 202): $FAILED / 50"

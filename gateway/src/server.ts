@@ -1,17 +1,22 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { sql, eq } from 'drizzle-orm';
 import { PassThrough } from 'stream';
-// 👇 Aggiunto "pool"
 import { db, pool } from './db';
 import { redisClient } from './redis';
-// 👇 Aggiunto "closeBroker" e "channel"
 import { initBroker, publishJob, closeBroker, channel } from './broker';
 import { jobsTable } from './schema';
 import fastifyRateLimit from '@fastify/rate-limit';
 import cors from '@fastify/cors';
-import client from 'prom-client';
-import fastifyStatic from '@fastify/static';
+import * as promClient from 'prom-client';
+const collectDefaultMetrics = promClient.collectDefaultMetrics;
+const Counter = promClient.Counter;
+// Il magico "as any" fa chiudere la bocca a TypeScript una volta per tutte
+const register = (promClient as any).register;
 import path from 'path';
+import fs from 'fs'; 
+import crypto from 'crypto';
+
+
 
 // === CONTROLLO DI SICUREZZA FAIL-FAST ===
 const API_KEY = process.env.API_KEY;
@@ -19,23 +24,32 @@ if (!API_KEY) {
     throw new Error("ERRORE CRITICO: API_KEY non è definita nelle variabili d'ambiente.");
 }
 
-// AGGIUNGI QUESTO BLOCCO:
 const METRICS_TOKEN = process.env.METRICS_TOKEN;
 if (!METRICS_TOKEN) {
     throw new Error("ERRORE CRITICO: METRICS_TOKEN non è definita nelle variabili d'ambiente.");
 }
 
 // Abilita le metriche di default di NodeJS (uso RAM, CPU, event loop)
-client.collectDefaultMetrics();
+collectDefaultMetrics();
 
-// Metrica 1: Job Totali Ricevuti
-const jobsSubmittedTotal = new client.Counter({
-  name: 'compileforge_jobs_submitted_total',
-  help: 'Numero totale di richieste di compilazione ricevute'
+const jobsSubmittedTotal = new Counter({
+    name: 'compileforge_jobs_submitted_total',
+    help: 'Numero totale di richieste di compilazione ricevute'
 });
-
 const app = Fastify({
-    logger: true,
+    logger: {
+        serializers: {
+            req(request) {
+                return {
+                    method: request.method,
+                    url: request.url.replace(/([?&]key=)[^&]+/, '$1REDACTED'),
+                    hostname: request.hostname,
+                    remoteAddress: request.ip,
+                    remotePort: request.socket.remotePort
+                };
+            }
+        }
+    },
     bodyLimit: 102400
 });
 
@@ -46,9 +60,38 @@ function isValidUuid(value: string): boolean {
     return UUID_REGEX.test(value);
 }
 
+function safeCompare(input: string | undefined, secret: string): boolean {
+    if (!input) return false;
+    
+    const inputBuffer = Buffer.from(input);
+    const secretBuffer = Buffer.from(secret);
+
+    if (inputBuffer.length !== secretBuffer.length) {
+        crypto.timingSafeEqual(secretBuffer, secretBuffer);
+        return false;
+    }
+
+    return crypto.timingSafeEqual(inputBuffer, secretBuffer);
+}
 async function apiRoutes(fastify: FastifyInstance) {
 
-    // === 👇 NUOVO: HEALTH CHECK ENDPOINT 👇 ===
+    // === MIDDLEWARE DI AUTENTICAZIONE ===
+    // Controlla l'header x-api-key OPPURE il query parameter ?key=
+    const requireApiKey = async (request: any, reply: any) => {
+        const headerKeyRaw = request.headers['x-api-key'];
+        const headerKey = Array.isArray(headerKeyRaw) ? headerKeyRaw[0] : headerKeyRaw;
+        const queryKey = (request.query as { key?: string }).key;
+        const API_KEY = process.env.API_KEY as string;
+        // 👇 4. USATO IL CONFRONTO A TEMPO COSTANTE
+        const isValid = safeCompare(headerKey ?? '', API_KEY) || safeCompare(queryKey ?? '', API_KEY);
+
+        if (!isValid) {
+            request.log.warn(`Accesso negato alla rotta: ${request.url}`);
+            return reply.status(401).send({ error: 'Unauthorized: API Key mancante o non valida' });
+        }
+    };
+
+    // === HEALTH CHECK ENDPOINT (Rimane aperto per i sistemi di monitoraggio) ===
     fastify.get('/health', async (request, reply) => {
         try {
             // 1. Ping al Database (esegue una query vuota leggerissima)
@@ -57,20 +100,19 @@ async function apiRoutes(fastify: FastifyInstance) {
             // 2. Ping a Redis
             await redisClient.ping();
             
-            // 3. Controllo RabbitMQ
+            // 3. Controllo RabbitMQ (CONTROLLO ATTIVO)
             if (!channel) {
-                throw new Error('Canale RabbitMQ disconnesso o non inizializzato');
+                throw new Error('Variabile canale RabbitMQ non inizializzata');
             }
+            // checkQueue verifica se la connessione è viva e se la coda esiste.
+            // Se il canale si è chiuso o RabbitMQ è irraggiungibile, lancerà un'eccezione.
+            await channel.checkQueue('compile_jobs');
 
             // Se arriviamo qui, l'infrastruttura sta benissimo!
             return reply.status(200).send({ 
                 status: 'ok', 
                 timestamp: new Date().toISOString(),
-                services: {
-                    database: 'up',
-                    redis: 'up',
-                    rabbitmq: 'up'
-                }
+                services: { database: 'up', redis: 'up', rabbitmq: 'up' }
             });
 
         } catch (error: any) {
@@ -83,7 +125,6 @@ async function apiRoutes(fastify: FastifyInstance) {
             });
         }
     });
-    // === 👆 FINE HEALTH CHECK ENDPOINT 👆 ===
 
     const compileSchema = {
         body: {
@@ -96,15 +137,8 @@ async function apiRoutes(fastify: FastifyInstance) {
         }
     };
 
-    fastify.post('/compile', { schema: compileSchema }, async (request, reply) => {
-        // La variabile API_KEY globale ora viene usata in modo sicuro
-        const clientKey = request.headers['x-api-key'];
-
-        if (!clientKey || clientKey !== API_KEY) {
-            request.log.warn('Tentativo di accesso non autorizzato alla rotta /compile');
-            return reply.status(401).send({ error: 'Unauthorized: Missing or invalid X-API-Key header' });
-        }
-
+    // 👇 Rotta protetta dal middleware
+    fastify.post('/compile', { schema: compileSchema, preHandler: requireApiKey }, async (request, reply) => {
         jobsSubmittedTotal.inc(); 
 
         const body = request.body as { source_code: string; language: string };
@@ -142,7 +176,8 @@ async function apiRoutes(fastify: FastifyInstance) {
         }
     });
 
-    fastify.get('/status/:job_id', async (request, reply) => {
+    // 👇 Rotta protetta dal middleware
+    fastify.get('/status/:job_id', { preHandler: requireApiKey }, async (request, reply) => {
         const { job_id } = request.params as { job_id: string };
         
         if (!isValidUuid(job_id)) {
@@ -172,7 +207,9 @@ async function apiRoutes(fastify: FastifyInstance) {
         }
     });
 
-    fastify.get('/status/:job_id/stream', async (request, reply) => {
+    // 👇 Rotta protetta dal middleware
+    // 👇 Rotta protetta dal middleware
+    fastify.get('/status/:job_id/stream', { preHandler: requireApiKey }, async (request, reply) => {
         const { job_id } = request.params as { job_id: string };
 
         if (!isValidUuid(job_id)) {
@@ -218,6 +255,7 @@ async function apiRoutes(fastify: FastifyInstance) {
             }
         };
 
+        // 1. Ci iscriviamo prima a Redis per non perdere nulla da questo momento in poi
         await subscriber.subscribe(channelName);
 
         subscriber.on('message', (channel: string, message: string) => {
@@ -232,6 +270,16 @@ async function apiRoutes(fastify: FastifyInstance) {
             }
         });
 
+        // 👇 FIX ANTI-RACE CONDITION: 
+        // Dopo l'iscrizione, rifacciamo un controllo lampo sul DB. 
+        // Se il worker ha finito il job proprio durante la fase di setup, lo becchiamo ora.
+        const [latestJob] = await db.select().from(jobsTable).where(eq(jobsTable.id, job_id));
+        if (latestJob && (latestJob.status === 'completed' || latestJob.status === 'failed')) {
+            stream.write(`data: ${JSON.stringify(latestJob)}\n\n`);
+            await cleanup();
+            return stream;
+        }
+
         request.raw.on('close', () => {
             cleanup();
         });
@@ -239,8 +287,9 @@ async function apiRoutes(fastify: FastifyInstance) {
         return stream;
     });
 
+    // Endpoint Metriche (Già protetto col suo token specifico)
+    // Endpoint Metriche (Già protetto col suo token specifico)
     fastify.get('/metrics', async (request, reply) => {
-        // HARDENING: Protezione dell'endpoint /metrics
         const authHeader = request.headers.authorization;
         
         if (authHeader !== `Bearer ${METRICS_TOKEN}`) {
@@ -248,8 +297,41 @@ async function apiRoutes(fastify: FastifyInstance) {
             return reply.status(401).send({ error: 'Unauthorized: Invalid metrics token' });
         }
 
-        reply.header('Content-Type', client.register.contentType);
-        return client.register.metrics();
+        // Usa register direttamente
+        reply.header('Content-Type', register.contentType);
+        
+        // Usa register direttamente
+        return reply.send(await register.metrics());
+    });
+
+    // 👇 Rotta protetta dal middleware
+    fastify.get('/download/:job_id', { preHandler: requireApiKey }, async (request, reply) => {
+        const { job_id } = request.params as { job_id: string };
+
+        if (!isValidUuid(job_id)) {
+            return reply.status(400).send({ error: 'L\'ID del job deve essere un UUID valido' });
+        }
+
+        // 👇 FIX 1: Cambiato in .out
+        const filePath = path.join('/app/downloads', `${job_id}.out`);
+
+        if (!fs.existsSync(filePath)) {
+            request.log.error(`Tentativo di download fallito, file mancante: ${filePath}`);
+            return reply.status(404).send({ error: 'File eseguibile non trovato o compilazione fallita' });
+        }
+
+        try {
+            // 👇 FIX 2: Cambiato il nome suggerito al browser in output.out
+            reply.header('Content-Disposition', 'attachment; filename="output.out"');
+            reply.header('Content-Type', 'application/octet-stream'); 
+
+            const stream = fs.createReadStream(filePath);
+            return reply.send(stream);
+            
+        } catch (error: any) {
+            request.log.error(`Errore durante lo stream del file: ${error.message}`);
+            return reply.status(500).send({ error: 'Errore interno del server durante il download' });
+        }
     });
 }
 
@@ -257,7 +339,6 @@ const start = async () => {
     try {
         console.log('⏳ Avvio dei controlli di sistema...');
 
-        // --- INIZIO LOGICA DI RETRY POSTGRES ---
         let dbRetries = 5;
         while (dbRetries > 0) {
             try {
@@ -271,9 +352,7 @@ const start = async () => {
                 await new Promise(res => setTimeout(res, 3000));
             }
         }
-        // --- FINE LOGICA DI RETRY POSTGRES ---
 
-        // --- INIZIO LOGICA DI RETRY REDIS ---
         let redisRetries = 5;
         while (redisRetries > 0) {
             try {
@@ -288,17 +367,9 @@ const start = async () => {
             }
         }
 
-        // --- INIZIO INIZIALIZZAZIONE RABBITMQ ---
         console.log('⏳ Connessione a RabbitMQ in corso...');
         await initBroker(); 
         console.log('✅ Connessione a RabbitMQ verificata');
-        // --- FINE INIZIALIZZAZIONE RABBITMQ ---
-
-
-        await app.register(fastifyStatic, {
-            root: '/app/downloads',
-            prefix: '/downloads/', 
-        });
         
         await app.register(cors, {
             origin: '*', 
@@ -330,21 +401,17 @@ const start = async () => {
 start();
 
 const shutdown = async (signal: string) => {
-    console.log(`\n🛑 Ricevuto segnale ${signal}. Avvio Graceful Shutdown del Gateway...`);
+    console.log(`\nRicevuto segnale ${signal}. Avvio Graceful Shutdown del Gateway...`);
     
     try {
-        // 1. Chiude Fastify (Aspetta in automatico la fine delle connessioni HTTP attive)
         await app.close();
-        console.log('🛑 Fastify chiuso: nessuna nuova richiesta HTTP accettata. Connessioni attive terminate.');
+        console.log('Fastify chiuso: nessuna nuova richiesta HTTP accettata. Connessioni attive terminate.');
 
-        // 2. Chiude RabbitMQ
         await closeBroker();
 
-        // 3. Chiude Postgres
         await pool.end();
         console.log('🔌 Connessione Postgres chiusa.');
 
-        // 4. Chiude Redis
         await redisClient.quit();
         console.log('🔌 Connessione Redis chiusa.');
 
@@ -356,6 +423,5 @@ const shutdown = async (signal: string) => {
     }
 };
 
-// Intercetta i segnali di stop del container Docker o del terminale (CTRL+C)
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));

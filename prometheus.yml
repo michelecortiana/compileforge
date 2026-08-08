@@ -5,14 +5,14 @@ scrape_configs:
   - job_name: 'gateway'
     bearer_token: 'super-segreto-prometheus-2026'
     static_configs:
-      # Sostituito l'IP fisso con host.docker.internal
-      - targets: ['host.docker.internal:8080']
+      # Modificato: Usa il nome del container invece di host.docker.internal
+      - targets: ['gateway:8080']
 
   - job_name: 'worker'
-    bearer_token: 'super-segreto-prometheus-2026' # <-- AGGIUNTO: Ora Prometheus si autentica anche col Worker
+    bearer_token: 'super-segreto-prometheus-2026'
     static_configs:
-      # Sostituito l'IP fisso con host.docker.internal
-      - targets: ['host.docker.internal:9090']
+      # Modificato: Usa il nome del container invece di host.docker.internal
+      - targets: ['worker:9090']
 
   - job_name: 'rabbitmq'
     static_configs:
