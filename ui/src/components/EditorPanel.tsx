@@ -6,8 +6,10 @@ import type { ThemeMode } from '../App';
 interface EditorPanelProps {
   code: string;
   setCode: (value: string) => void;
-  theme: ThemeMode; // 👈 Riceve il tema corrente da App.tsx
+  theme: ThemeMode;
 }
+
+const MAX_FILE_SIZE_BYTES = 95000; // 95KB
 
 const EditorPanel = ({ code, setCode, theme }: EditorPanelProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +36,12 @@ const EditorPanel = ({ code, setCode, theme }: EditorPanelProps) => {
   const handleFileUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      readFile(file);
+      // CONTROLLO DIMENSIONE
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        alert("⚠️ Il file è troppo grande! La dimensione massima consentita è ~95KB.");
+      } else {
+        readFile(file);
+      }
     }
     if (event.target) {
       event.target.value = ''; 
@@ -45,10 +52,19 @@ const EditorPanel = ({ code, setCode, theme }: EditorPanelProps) => {
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const file = event.dataTransfer.files?.[0];
-    if (file && (file.name.endsWith('.c') || file.name.endsWith('.txt'))) {
-      readFile(file);
-    } else {
-      alert("Formato non supportato. Per favore, carica un file .c");
+    
+    if (file) {
+      // CONTROLLO DIMENSIONE
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        alert("⚠️ Il file è troppo grande! La dimensione massima consentita è ~95KB.");
+        return;
+      }
+
+      if (file.name.endsWith('.c') || file.name.endsWith('.txt')) {
+        readFile(file);
+      } else {
+        alert("Formato non supportato. Per favore, carica un file .c");
+      }
     }
   };
 

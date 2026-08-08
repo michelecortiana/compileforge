@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { CompileStatus, ThemeMode } from '../App';
+// 👇 1. Importa la funzione dal servizio API
+import { getDownloadUrl } from '../services/apiClient';
 
 interface OutputPanelProps {
   status: CompileStatus;
@@ -7,13 +9,14 @@ interface OutputPanelProps {
   assembly?: string;
   irCode?: string;
   metrics?: { start?: string; end?: string };
-  downloadUrl?: string | null;
-  theme: ThemeMode; // 👈 Riceve il tema corrente
+  // 👇 2. Cambiato downloadUrl in jobId
+  jobId?: string | null; 
+  theme: ThemeMode;
 }
 
 type TabType = 'terminal' | 'assembly' | 'ir' | 'metrics';
 
-export default function OutputPanel({ status, output, assembly, irCode, metrics, downloadUrl, theme }: OutputPanelProps) {
+export default function OutputPanel({ status, output, assembly, irCode, metrics, jobId, theme }: OutputPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>('terminal');
   const isDark = theme === 'dark';
 
@@ -27,10 +30,13 @@ export default function OutputPanel({ status, output, assembly, irCode, metrics,
       case 'idle': return <span className="text-gray-500">In attesa...</span>;
       case 'submitting': 
       case 'queued': return <span className="text-yellow-400 animate-pulse">In coda...</span>;
+      case 'connected': return <span className="text-blue-300 animate-pulse">Connesso...</span>;
+      case 'processing':
       case 'compiling': return <span className="text-blue-400 animate-pulse">Compilazione...</span>;
       case 'completed': return <span className="text-green-500 font-bold">Completato</span>;
+      case 'failed':
       case 'error': return <span className="text-red-500 font-bold">Errore</span>;
-      default: return null;
+      default: return <span className="text-gray-400">{status}</span>;
     }
   };
 
@@ -63,13 +69,14 @@ export default function OutputPanel({ status, output, assembly, irCode, metrics,
           <h2 className={`text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
             Risultati
           </h2>
-          {downloadUrl && status === 'completed' && (
+          
+          {/* 👇 3. Aggiornato il link con la nuova logica */}
+          {jobId && status === 'completed' && (
             <a 
-              href={downloadUrl} 
-              download 
+              href={getDownloadUrl(jobId)} 
               className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow transition-colors"
             >
-              📥 Scarica Eseguibile (Linux x86-64)
+              📥 Scarica Eseguibile (.out)
             </a>
           )}
         </div>
