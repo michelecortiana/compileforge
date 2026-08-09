@@ -37,3 +37,9 @@ yarn-error.log*
 .vscode/
 .idea/
 worker-tmp/*
+
+# ========================
+# Segreti Esternalizzati
+# ========================
+secrets/*
+!secrets/*.example

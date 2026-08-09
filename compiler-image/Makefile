@@ -1,7 +1,7 @@
 # Compilatore da usare
 CC = gcc
 # Flag: mostra avvisi (-Wall -Wextra), prepara per il debug (-g) e include gli header (-Iinclude)
-CFLAGS = -Wall -Wextra -g -Iinclude
+CFLAGS = -Wall -Wextra -O2 -g -Iinclude
 # Nome del file eseguibile finale
 TARGET = compilatore
 
