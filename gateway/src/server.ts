@@ -1,5 +1,6 @@
+import 'dotenv/config';
 import Fastify, { FastifyInstance } from 'fastify';
-import { sql, eq } from 'drizzle-orm';
+import { sql, eq, desc} from 'drizzle-orm';
 import { PassThrough } from 'stream';
 import { db, pool } from './db';
 import { redisClient } from './redis';
@@ -198,8 +199,16 @@ async function apiRoutes(fastify: FastifyInstance) {
                 return reply.status(404).send({ error: 'Job non trovato' });
             }
 
-            await redisClient.set(cacheKey, JSON.stringify(job), 'EX', 15);
-            return reply.send(job);
+            // 👈 MAPPA I CAMPI DAL DB AL FORMATO ATTESO DAL FRONTEND
+            const formattedJob = {
+                ...job,
+                output: job.output,
+                irCode: job.outputIr,
+                assembly: job.outputAsm
+            };
+
+            await redisClient.set(cacheKey, JSON.stringify(formattedJob), 'EX', 15);
+            return reply.send(formattedJob);
 
         } catch (error: any) {
             fastify.log.error(error);
@@ -251,15 +260,15 @@ async function apiRoutes(fastify: FastifyInstance) {
                 await subscriber.quit();
                 stream.end();
             } catch (err) {
-                fastify.log.error('Errore chiusura stream SSE:', err);
+                fastify.log.error(err as Error, 'Errore chiusura stream SSE:'); // ✅ CORRETTO
             }
         };
 
         // 1. Ci iscriviamo prima a Redis per non perdere nulla da questo momento in poi
         await subscriber.subscribe(channelName);
 
-        subscriber.on('message', (channel: string, message: string) => {
-            if (channel === channelName) {
+        subscriber.on('message', (redisChannel: string, message: string) => {
+            if (redisChannel === channelName) {
                 stream.write(`data: ${message}\n\n`);
                 try {
                     const parsedMessage = JSON.parse(message);
@@ -333,6 +342,29 @@ async function apiRoutes(fastify: FastifyInstance) {
             return reply.status(500).send({ error: 'Errore interno del server durante il download' });
         }
     });
+
+    // 👇 Nuova rotta per recuperare lo storico dei job
+    fastify.get('/jobs', { preHandler: requireApiKey }, async (request, reply) => {
+        const query = request.query as { limit?: string };
+        const limit = Math.min(parseInt(query.limit || '20', 10), 50);
+
+        try {
+            const jobs = await db.select({
+                id: jobsTable.id,
+                status: jobsTable.status,
+                createdAt: jobsTable.createdAt,
+                language: jobsTable.language
+            })
+            .from(jobsTable)
+            .orderBy(desc(jobsTable.createdAt))
+            .limit(limit);
+
+            return reply.send(jobs);
+        } catch (error: any) {
+            fastify.log.error(error);
+            return reply.status(500).send({ error: 'Errore interno del server' });
+        }
+    });
 }
 
 const start = async () => {
@@ -372,7 +404,7 @@ const start = async () => {
         console.log('✅ Connessione a RabbitMQ verificata');
         
         await app.register(cors, {
-            origin: '*', 
+            origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
             methods: ['GET', 'POST', 'OPTIONS'],
             allowedHeaders: ['Content-Type', 'x-api-key', 'Authorization']
         });

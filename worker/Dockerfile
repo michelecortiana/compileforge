@@ -10,8 +10,11 @@ RUN npm install
 
 COPY . .
 
+# 👇 Compila il codice TypeScript in JavaScript nella cartella /dist
+RUN npm run build
+
 # Esponi la porta usata dal Worker per le metriche Prometheus
 EXPOSE 9090
 
-# Avvia usando tsx direttamente sul file TypeScript del worker
-CMD ["npx", "tsx", "src/worker.ts"]
+# 👇 Avvia usando Node puro sul file compilato
+CMD ["npm", "start"]

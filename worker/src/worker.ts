@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 // 1. Inizializzazione: Importa i moduli nativi
 import fs from 'fs/promises';
 import { exec } from 'child_process';
@@ -7,13 +9,14 @@ import { eq } from 'drizzle-orm';
 import client from 'prom-client';
 import express from 'express';
 
+// Ora questi moduli troveranno le variabili pronte all'uso
 import { initBroker, closeBroker, channel as rabbitChannel } from './rabbitmq';
 import { db, pool } from './db'; 
 import { jobsTable } from './schema';
 import { redisClient } from './redis';
 
 const execAsync = util.promisify(exec);
-
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // === CONTROLLI DI SICUREZZA E VARIABILI GLOBALI ===
 const METRICS_TOKEN = process.env.METRICS_TOKEN;
 if (!METRICS_TOKEN) {
@@ -46,6 +49,13 @@ const jobDurationHistogram = new client.Histogram({
 
 // Mini-server per esporre le metriche
 const app = express();
+
+// 👇 AGGIUNGI QUESTE 3 RIGHE PER L'HEALTHCHECK DI DOCKER 👇
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
+// 👆 FINE AGGIUNTA 👆
+
 app.get('/metrics', async (req, res) => {
     const authHeader = req.headers.authorization;
 
@@ -58,25 +68,30 @@ app.get('/metrics', async (req, res) => {
     res.end(await client.register.metrics());
 });
 
+const PORT = process.env.PORT ? Number(process.env.PORT) : 9090;
+
 // Salviamo l'istanza del server per poterlo chiudere
-const metricsServer = app.listen(9090, '0.0.0.0', () => console.log('Worker metrics esposte su porta 9090'));
+const metricsServer = app.listen(PORT, '0.0.0.0', () => console.log(`Worker metrics esposte su porta ${PORT}`));
 
 async function finalizeJob(jobId: string, status: 'failed', errorMessage: string) {
     console.log(`Finalizzazione job ${jobId} con stato: ${status}`);
     
-    // 👇 FIX METRICHE: Incrementiamo il contatore dei fallimenti per i job finiti in DLQ
     if (status === 'failed') {
         jobResultsTotal.inc({ status: 'failed' });
     }
     
     // Aggiorna DB
     await db.update(jobsTable)
-        .set({ 
-            status, 
-            errorMessage,
-            finishedAt: new Date() 
-        })
-        .where(eq(jobsTable.id, jobId));
+    .set({ 
+        status, 
+        errorMessage,
+        output: errorMessage, 
+        finishedAt: new Date() 
+    })
+    .where(eq(jobsTable.id, jobId));
+
+    // 👇 AGGIUNGI QUESTA RIGA: Elimina la cache vecchia del Gateway
+    await redisClient.del(`job_status:${jobId}`);
 
     // Notifica Redis
     const updatePayload = JSON.stringify({
@@ -90,12 +105,11 @@ async function finalizeJob(jobId: string, status: 'failed', errorMessage: string
 
 async function startWorker() {
     try {
-        let channel;
         let retries = 5;
         
         while (retries > 0) {
             try {
-                channel = await initBroker();
+                await initBroker();
                 console.log('✅ Connesso a RabbitMQ (Worker)!');
                 break;
             } catch (error) {
@@ -106,18 +120,18 @@ async function startWorker() {
             }
         }
 
-        if (!channel) throw new Error("Canale RabbitMQ non inizializzato");
+        if (!rabbitChannel) throw new Error("Canale RabbitMQ non inizializzato");
 
-        await channel.prefetch(1);
+        await rabbitChannel.prefetch(1);
         console.log('Worker avviato. In attesa di job nella coda "compile_jobs"...');
 
         // Estraiamo il consumerTag per poter cancellare l'iscrizione
-        const { consumerTag } = await channel.consume('compile_jobs', async (msg: any) => {
+        const { consumerTag } = await rabbitChannel.consume('compile_jobs', async (msg: any) => {
             if (!msg) return;
 
             // Se stiamo spegnendo, rimettiamo in coda il job per un altro worker
             if (isShuttingDown) {
-                channel.nack(msg, false, true); 
+                rabbitChannel.nack(msg, false, true); 
                 return;
             }
 
@@ -129,6 +143,12 @@ async function startWorker() {
             try {
                 const jobData = JSON.parse(msg.content.toString());
                 const { jobId, sourceCode } = jobData;
+                
+                // 👇 AGGIUNGI IL CONTROLLO SICUREZZA UUID QUI 👇
+                if (!UUID_REGEX.test(jobId)) {
+                    throw new Error(`Rilevato jobId malformato o potenziale tentativo di iniezione: ${jobId}`);
+                }
+                // 👆 FINE CONTROLLO 👆
                 
                 console.log(`Elaborazione Job ID: ${jobId} iniziata...`);
                 
@@ -143,8 +163,10 @@ async function startWorker() {
                 await fs.writeFile(filePath, sourceCode);
                 await fs.mkdir(outputDir, { recursive: true });
                 await fs.mkdir(downloadDir, { recursive: true }); 
-                await execAsync(`chmod 777 ${outputDir}`);
-
+                
+                // 👇 SOSTITUISCI EXECASYNC CON FS.CHMOD NATIVO 👇
+                await fs.chmod(outputDir, 0o770);
+                // 👆 FINE SOSTITUZIONE 👆
                 // 👇 AGGIUNGI QUESTO BLOCCO: Notifica lo stato intermedio "processing" alla UI
                 await db.update(jobsTable)
                     .set({ status: 'processing' })
@@ -164,6 +186,7 @@ async function startWorker() {
                 const hostOutputDir = path.join(HOST_TMP_BASE as string, `output-${jobId}`);
 
                 const command = `docker run --rm --name ${containerName} --memory=256m --cpus=0.5 ` +
+                `--user ${process.getuid ? process.getuid() : 1000}:${process.getgid ? process.getgid() : 1000} ` + // 👈 INIETTA L'UID/GID DEL WORKER
                 `--network none ` +                  // 🔒 BLOCCO TOTALE: Niente internet o rete interna
                 `--pids-limit 64 ` +                 // 🔒 ANTI-BOMB: Massimo 64 processi attivi
                 `--cap-drop ALL ` +                  // 🔒 DROP PRIVILEGES: Rimuove tutte le "capabilities" di Linux
@@ -222,15 +245,20 @@ async function startWorker() {
                 }
                 endTimer(); 
 
+                // 👇 QUESTO È L'UPDATE CORRETTO CON TUTTI I CAMPI
                 await db.update(jobsTable)
                     .set({ 
                         status: finalStatus, 
                         errorMessage: finalStatus === 'failed' ? finalOutput : null,
-                        outputIr: outputIr,
-                        outputAsm: outputAsm,
+                        output: finalOutput,        
+                        outputIr: outputIr,         
+                        outputAsm: outputAsm,       
                         finishedAt: new Date(finishedAt) 
                     })
                     .where(eq(jobsTable.id, jobId));
+
+                // 👇 AGGIUNGI QUESTA RIGA: Invalida la cache anche qui
+                await redisClient.del(`job_status:${jobId}`);
 
                 const updatePayload = JSON.stringify({
                     jobId,
@@ -244,7 +272,7 @@ async function startWorker() {
                 });
                 await redisClient.publish(`job_updates:${jobId}`, updatePayload);
 
-                channel.ack(msg);
+                rabbitChannel.ack(msg);
                 console.log(`Job ID: ${jobId} completato [${finalStatus}] e notificato.`);
 
             } catch (error) {
@@ -264,10 +292,10 @@ async function startWorker() {
                     // 👇 Aggiungi questo delay (es. 1 secondo * retryCount)
                     await new Promise(res => setTimeout(res, 1000 * (retryCount + 1)));
                 
-                    channel.publish('', 'compile_jobs', msg.content, {
+                    rabbitChannel.publish('', 'compile_jobs', msg.content, {
                         headers: { ...headers, 'x-retry-count': retryCount + 1 }
                     });
-                    channel.ack(msg);
+                    rabbitChannel.ack(msg);
                 } else {
                     console.error(`Job ID: ${failedJobId} fallito per 3 volte. Spostamento definitivo in DLQ.`);
                     
@@ -283,7 +311,7 @@ async function startWorker() {
                         console.error('🚨 IMPOSSIBILE FINALIZZARE NEL DB: Messaggio irrecuperabile o malformato. Payload originale:', msg.content.toString());
                     }
 
-                    channel.nack(msg, false, false); 
+                    rabbitChannel.nack(msg, false, false); 
                 }
             } finally {
                 activeJobs--; // Rimuoviamo il job dai processi in corso

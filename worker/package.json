@@ -2,9 +2,11 @@
   "name": "worker",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/worker.js",
   "scripts": {
     "dev": "tsx watch src/worker.ts",
+    "build": "tsc",
+    "start": "node dist/worker.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -26,6 +28,6 @@
     "@types/node": "^20.14.0",
     "@types/pg": "^8.20.0",
     "tsx": "^4.23.1",
-    "typescript": "^7.0.2"
+    "typescript": "^5.5.0"
   }
 }

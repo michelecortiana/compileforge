@@ -1,9 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres'; // Usa l'adattatore per pg
 import { Pool } from 'pg'; // Importa il Pool direttamente da qui
-import dotenv from 'dotenv';
 import * as schema from './schema';
 
-dotenv.config();
 
 const databaseUrl = process.env.DATABASE_URL;
 

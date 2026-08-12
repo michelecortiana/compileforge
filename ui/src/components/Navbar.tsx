@@ -6,9 +6,9 @@ interface NavbarProps {
   theme: ThemeMode;
   onToggleTheme: () => void;
   onSelectSnippet: (code: string) => void;
+  onOpenHistory: () => void;
 }
 
-// Snippet precaricati adatti al compilatore
 const CODE_SNIPPETS = [
   {
     label: 'Somma Semplice',
@@ -24,14 +24,13 @@ const CODE_SNIPPETS = [
   }
 ];
 
-export default function Navbar({ onCompile, status, theme, onToggleTheme, onSelectSnippet }: NavbarProps) {
-  const isWorking = status === 'submitting' || status === 'queued' || status === 'compiling';
+export default function Navbar({ onCompile, status, theme, onToggleTheme, onSelectSnippet, onOpenHistory }: NavbarProps) {
+  const isWorking = status === 'submitting' || status === 'pending' || status === 'compiling'; 
   const isDark = theme === 'dark';
 
   return (
     <div className={`flex justify-between items-center p-4 border-b ${isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-800'}`}>
       
-      {/* Titolo e Selettore Snippet */}
       <div className="flex items-center gap-6">
         <h1 className="text-xl font-bold text-blue-500">CompileForge</h1>
         
@@ -41,7 +40,7 @@ export default function Navbar({ onCompile, status, theme, onToggleTheme, onSele
             onChange={(e) => {
               if (e.target.value !== "") {
                 onSelectSnippet(e.target.value);
-                e.target.value = ""; // Reset della select
+                e.target.value = ""; 
               }
             }}
             defaultValue=""
@@ -61,9 +60,18 @@ export default function Navbar({ onCompile, status, theme, onToggleTheme, onSele
         </div>
       </div>
       
-      {/* Controlli a destra: Cambio Tema e Pulsante Compila */}
       <div className="flex items-center gap-3">
-        {/* Pulsante Cambio Tema */}
+        <button
+          onClick={onOpenHistory}
+          className={`px-3 py-1.5 text-sm font-semibold rounded transition-colors border ${
+            isDark 
+              ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600' 
+              : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100 shadow-sm'
+          }`}
+        >
+          🕒 Storico Job
+        </button>
+
         <button
           onClick={onToggleTheme}
           title="Cambia Tema"
@@ -76,7 +84,6 @@ export default function Navbar({ onCompile, status, theme, onToggleTheme, onSele
           {isDark ? '☀️' : '🌙'}
         </button>
 
-        {/* Pulsante Compila */}
         <button 
           onClick={onCompile} 
           disabled={isWorking} 
@@ -89,7 +96,6 @@ export default function Navbar({ onCompile, status, theme, onToggleTheme, onSele
           {isWorking ? 'Elaborazione in corso...' : 'Compila ed Esegui'}
         </button>
       </div>
-
     </div>
   );
 }

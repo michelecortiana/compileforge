@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import type { CompileStatus, ThemeMode } from '../App';
-// 👇 1. Importa la funzione dal servizio API
 import { getDownloadUrl } from '../services/apiClient';
 
 interface OutputPanelProps {
@@ -9,7 +8,6 @@ interface OutputPanelProps {
   assembly?: string;
   irCode?: string;
   metrics?: { start?: string; end?: string };
-  // 👇 2. Cambiato downloadUrl in jobId
   jobId?: string | null; 
   theme: ThemeMode;
 }
@@ -18,7 +16,15 @@ type TabType = 'terminal' | 'assembly' | 'ir' | 'metrics';
 
 export default function OutputPanel({ status, output, assembly, irCode, metrics, jobId, theme }: OutputPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>('terminal');
+  const [copied, setCopied] = useState(false);
+  
   const isDark = theme === 'dark';
+  
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const stripAnsi = (str: string) => {
     if (!str) return "";
@@ -29,7 +35,7 @@ export default function OutputPanel({ status, output, assembly, irCode, metrics,
     switch (status) {
       case 'idle': return <span className="text-gray-500">In attesa...</span>;
       case 'submitting': 
-      case 'queued': return <span className="text-yellow-400 animate-pulse">In coda...</span>;
+      case 'pending': return <span className="text-yellow-400 animate-pulse">In coda...</span>; 
       case 'connected': return <span className="text-blue-300 animate-pulse">Connesso...</span>;
       case 'processing':
       case 'compiling': return <span className="text-blue-400 animate-pulse">Compilazione...</span>;
@@ -63,21 +69,36 @@ export default function OutputPanel({ status, output, assembly, irCode, metrics,
   return (
     <div className={`flex flex-col h-full border-l ${isDark ? 'bg-[#0d1117] border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-800'}`}>
       
-      {/* Header con Badge di stato e Bottone Download */}
+      {/* Header con Badge di stato e Bottoni */}
       <div className={`flex justify-between items-center px-4 py-2 border-b shadow-sm ${isDark ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
         <div className="flex items-center gap-4">
           <h2 className={`text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
             Risultati
           </h2>
           
-          {/* 👇 3. Aggiornato il link con la nuova logica */}
+          {/* 👇 BLOCCO BOTTONI AGGIORNATO */}
           {jobId && status === 'completed' && (
-            <a 
-              href={getDownloadUrl(jobId)} 
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow transition-colors"
-            >
-              📥 Scarica Eseguibile (.out)
-            </a>
+            <div className="flex gap-2">
+              <button
+                onClick={handleCopyLink}
+                className={`px-3 py-1 text-xs font-bold rounded shadow transition-colors border ${
+                  copied 
+                    ? 'bg-green-600 text-white border-green-600' 
+                    : isDark 
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 border-gray-600' 
+                      : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-300'
+                }`}
+              >
+                {copied ? '✅ Link Copiato!' : '🔗 Condividi Job'}
+              </button>
+
+              <a 
+                href={getDownloadUrl(jobId)} 
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow transition-colors"
+              >
+                📥 Scarica Eseguibile (.out)
+              </a>
+            </div>
           )}
         </div>
         <div className={`text-xs font-mono px-2 py-1 rounded border ${isDark ? 'bg-black border-gray-700 text-white' : 'bg-gray-200 border-gray-300 text-gray-900'}`}>

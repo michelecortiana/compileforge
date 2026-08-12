@@ -5,6 +5,7 @@ export const jobsTable = pgTable('jobs', {
     sourceCode: text('source_code').notNull(),
     language: text('language').notNull(),
     status: text('status').default('pending').notNull(),
+    output: text('output'),          // 👈 mancava questa
     outputIr: text('output_ir'),
     outputAsm: text('output_asm'),
     errorMessage: text('error_message'),

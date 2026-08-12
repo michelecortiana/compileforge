@@ -1,11 +1,15 @@
 {
-  "type": "module",
+  "name": "gateway",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "dist/server.js",
   "devDependencies": {
     "@types/amqplib": "^0.10.5",
     "@types/node": "^20.14.0",
     "@types/pg": "^8.20.0",
     "drizzle-kit": "^0.31.10",
-    "tsx": "^4.23.1"
+    "tsx": "^4.23.1",
+    "typescript": "^5.5.0"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
@@ -20,6 +24,8 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push"
   }

@@ -1,7 +1,5 @@
 import * as amqp from 'amqplib';
-import dotenv from 'dotenv';
 
-dotenv.config();
 const rabbitmqUrl = process.env.RABBITMQ_URL;
 
 if (!rabbitmqUrl) {
