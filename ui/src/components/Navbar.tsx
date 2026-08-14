@@ -7,6 +7,7 @@ interface NavbarProps {
   onToggleTheme: () => void;
   onSelectSnippet: (code: string) => void;
   onOpenHistory: () => void;
+  onOpenInfo: () => void; // 👈 NUOVA PROP
 }
 
 const CODE_SNIPPETS = [
@@ -24,7 +25,7 @@ const CODE_SNIPPETS = [
   }
 ];
 
-export default function Navbar({ onCompile, status, theme, onToggleTheme, onSelectSnippet, onOpenHistory }: NavbarProps) {
+export default function Navbar({ onCompile, status, theme, onToggleTheme, onSelectSnippet, onOpenHistory, onOpenInfo }: NavbarProps) {
   const isWorking = status === 'submitting' || status === 'pending' || status === 'compiling'; 
   const isDark = theme === 'dark';
 
@@ -61,6 +62,18 @@ export default function Navbar({ onCompile, status, theme, onToggleTheme, onSele
       </div>
       
       <div className="flex items-center gap-3">
+        {/* 👇 NUOVO BOTTONE INFO COMPILATORE */}
+        <button
+          onClick={onOpenInfo}
+          className={`px-3 py-1.5 text-sm font-semibold rounded transition-colors border ${
+            isDark 
+              ? 'bg-gray-700 border-gray-600 text-amber-400 hover:bg-gray-600' 
+              : 'bg-white border-gray-300 text-amber-600 hover:bg-amber-50 shadow-sm'
+          }`}
+        >
+          ℹ️ Info Compilatore
+        </button>
+
         <button
           onClick={onOpenHistory}
           className={`px-3 py-1.5 text-sm font-semibold rounded transition-colors border ${

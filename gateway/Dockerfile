@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+# 👇 AGGIUNGI QUESTA RIGA: Installa curl per l'healthcheck
+RUN apk add --no-cache curl
+
 # Imposta la directory di lavoro
 WORKDIR /app
 

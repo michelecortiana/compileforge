@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import Editor, { useMonaco } from '@monaco-editor/react';
 import type { ThemeMode, CompileStatus } from '../App';
@@ -18,6 +18,8 @@ const EditorPanel = ({ code, setCode, theme, status, output }: EditorPanelProps)
   const editorRef = useRef<any>(null);
   const monaco = useMonaco();
   const isDark = theme === 'dark';
+  
+  const [unsupportedWarning, setUnsupportedWarning] = useState<string | null>(null);
 
   const handleEditorDidMount = (editor: any) => {
     editorRef.current = editor;
@@ -34,7 +36,7 @@ const EditorPanel = ({ code, setCode, theme, status, output }: EditorPanelProps)
       const lines = output?.split('\n') || [];
 
       lines.forEach(line => {
-        const match = line.match(/\(Riga\s+(\d+),\s*Colonna\s+(\d+)\)/i);
+        const match = line.match(/(?:\(|alla\s+)?riga\s+(\d+),\s*colonna\s+(\d+)\)?/i);
         
         if (match) {
           const lineNum = parseInt(match[1], 10);
@@ -58,9 +60,57 @@ const EditorPanel = ({ code, setCode, theme, status, output }: EditorPanelProps)
     }
   }, [status, output, monaco]);
 
+  // Funzione helper aggiornata con tutte le limitazioni del compilatore
+  const checkUnsupportedConstructs = (text: string) => {
+    const unsupported = [];
+    
+    // Preprocessore
+    if (/#(include|define|ifdef|pragma)\b/.test(text)) unsupported.push('Preprocessore (#)');
+    
+    // Commenti multilinea
+    if (/\/\*/.test(text)) unsupported.push('Commenti multilinea (/* */)');
+    
+    // Tipi, Booleani e Qualificatori
+    if (/\bunsigned\b/.test(text)) unsupported.push('Tipi unsigned');
+    if (/\b(bool|_Bool|true|false)\b/.test(text)) unsupported.push('Booleani');
+    if (/\b(enum|typedef|union)\b/.test(text)) unsupported.push('Tipi custom (enum/typedef/union)');
+    if (/\b(const|static|volatile)\b/.test(text)) unsupported.push('Qualificatori (const/static/volatile)');
+    if (/\bvoid\b/.test(text)) unsupported.push('Tipo void');
+    
+    // Array multidimensionali (cerca due coppie di parentesi quadre vicine)
+    if (/\[\s*[^\]]*\s*\]\s*\[/.test(text)) unsupported.push('Array multidimensionali');
+    
+    // Operatori non supportati
+    if (/\+\+/.test(text)) unsupported.push('Operatore ++');
+    if (/\+=/.test(text)) unsupported.push('Operatore +=');
+    if (/\?/.test(text)) unsupported.push('Operatore ternario (?:)');
+    if (/<<|>>|\^|\|(?!=|\|)/.test(text)) unsupported.push('Operatori bit a bit');
+    if (/!(?!=)/.test(text)) unsupported.push('NOT logico standalone (!)');
+    
+    // Controllo di flusso
+    if (/\b(switch|case|do|goto)\b/.test(text)) unsupported.push('switch/case/do/goto');
+    
+    // Suffissi numerici (es. 1.5f, 10L)
+    if (/\b\d+(\.\d+)?[fFuUlL]+\b/.test(text)) unsupported.push('Suffissi numerici (es. 1.5f)');
+    
+    if (unsupported.length > 0) {
+      // Usiamo Set per rimuovere eventuali duplicati, poi uniamo con la virgola
+      const uniqueUnsupported = Array.from(new Set(unsupported));
+      setUnsupportedWarning(`⚠️ Attenzione: Il compilatore attualmente non supporta: ${uniqueUnsupported.join(', ')}`);
+    } else {
+      setUnsupportedWarning(null);
+    }
+  };
+
+  useEffect(() => {
+    checkUnsupportedConstructs(code);
+  }, [code]);
+
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
       setCode(value);
+      
+      checkUnsupportedConstructs(value);
       
       if (monaco && editorRef.current) {
         const model = editorRef.current.getModel();
@@ -76,6 +126,8 @@ const EditorPanel = ({ code, setCode, theme, status, output }: EditorPanelProps)
     reader.onload = (e) => {
       const content = e.target?.result as string;
       setCode(content);
+      
+      checkUnsupportedConstructs(content);
       
       if (monaco && editorRef.current) {
         const model = editorRef.current.getModel();
@@ -137,6 +189,19 @@ const EditorPanel = ({ code, setCode, theme, status, output }: EditorPanelProps)
           </button>
         </div>
       </div>
+
+      {unsupportedWarning && (
+        <div className="bg-amber-500 text-amber-950 px-4 py-2 text-sm font-semibold flex justify-between items-center animate-pulse">
+          <span>{unsupportedWarning}</span>
+          <button 
+            onClick={() => setUnsupportedWarning(null)} 
+            className="text-amber-950 hover:text-black hover:scale-110 transition-transform font-bold"
+            title="Chiudi avviso"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="flex-1">
         <Editor

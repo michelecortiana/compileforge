@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import EditorPanel from './components/EditorPanel';
 import OutputPanel from './components/OutputPanel';
+// 👇 Importa il nuovo modale
+import LimitationsModal from './components/LimitationsModal';
 import { submitCode, listenForJobStatus, fetchRecentJobs, fetchJobDetails } from './services/apiClient';
 import type { JobStatusUpdate } from './services/apiClient';
 
@@ -27,10 +29,13 @@ function App() {
   const [metrics, setMetrics] = useState<{start?: string, end?: string}>({});
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
 
-  // === STATO MODALE STORICO ===
+  // === STATO MODALE STORICO E INFO ===
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyJobs, setHistoryJobs] = useState<JobStatusUpdate[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  
+  // 👇 STATO PER IL MODALE INFO (impostato a true per aprirlo all'avvio)
+  const [showInfoModal, setShowInfoModal] = useState(true);
 
   useEffect(() => {
     localStorage.setItem('compileforge_code', code);
@@ -97,7 +102,6 @@ function App() {
   // === LOGICA CONDIVISIONE LINK ===
   useEffect(() => {
     const path = window.location.pathname;
-    // Cerca un pattern tipo /j/numero-o-lettere
     const match = path.match(/^\/j\/([a-zA-Z0-9-]+)$/);
     if (match && match[1]) {
       const jobIdFromUrl = match[1];
@@ -131,7 +135,6 @@ function App() {
       setCurrentJobId(jobDetails.id || id);
       setStatus(jobDetails.status as CompileStatus);
 
-      // 👇 AGGIUNGI QUESTA RIGA: Cambia l'URL nella barra di ricerca
       window.history.pushState({}, '', `/j/${jobDetails.id || id}`);
 
       if (jobDetails.status === 'completed') {
@@ -162,6 +165,7 @@ function App() {
         onToggleTheme={toggleTheme}
         onSelectSnippet={handleSelectSnippet}
         onOpenHistory={openHistory}
+        onOpenInfo={() => setShowInfoModal(true)} // 👈 PASSA LA FUNZIONE ALLA NAVBAR
       />
       
       <div className="flex flex-1 overflow-hidden">
@@ -221,6 +225,14 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 👇 NUOVO MODALE LIMITAZIONI */}
+      {showInfoModal && (
+        <LimitationsModal 
+          onClose={() => setShowInfoModal(false)}
+          theme={theme}
+        />
       )}
     </div>
   );

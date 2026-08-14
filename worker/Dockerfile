@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Installa il client Docker per permettere al Worker di lanciare i container
-RUN apk add --no-cache docker-cli
+# 👇 MODIFICA QUESTA RIGA: Aggiungi curl dopo docker-cli
+RUN apk add --no-cache docker-cli curl
 
 WORKDIR /app
 
