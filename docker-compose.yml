@@ -7,7 +7,8 @@ services:
       POSTGRES_PASSWORD: pass
       POSTGRES_DB: compileforge
     ports: 
-      - "${POSTGRES_PORT:-5432}:5432"
+      # 👇 FIX: Solo connessioni locali
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -24,9 +25,10 @@ services:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: pass
     ports:
-      - "5672:5672"
-      - "15672:15672"
-      - "15692:15692"
+      # 👇 FIX: Solo connessioni locali
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+      - "127.0.0.1:15692:15692"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./rabbitmq_enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
@@ -41,7 +43,8 @@ services:
     container_name: redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      # 👇 FIX: Solo connessioni locali
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -58,30 +61,32 @@ services:
       - ./secrets/metrics_token.txt:/etc/secrets/metrics_token:ro
       - prometheus_data:/prometheus
     ports:
-      - "9091:9090"
+      # 👇 FIX: Solo connessioni locali
+      - "127.0.0.1:9091:9090"
 
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     volumes:
       - grafana_data:/var/lib/grafana
-      # Ora montiamo solo le due cartelle, puntando a quelle vere senza il prefisso ./grafana/
       - ./grafana-provisioning/datasources:/etc/grafana/provisioning/datasources
       - ./grafana-provisioning/dashboards:/etc/grafana/provisioning/dashboards
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
     ports:
-      - "3000:3000"
+      # 👇 FIX: Solo connessioni locali
+      - "127.0.0.1:3000:3000"
 
   gateway:
     build: ./gateway
     container_name: gateway
+    restart: unless-stopped  # 👈 AGGIUNGI QUESTA RIGA
     ports:
-      - "8080:8080"
+      # 👇 FIX: Solo connessioni locali
+      - "127.0.0.1:8080:8080"
     env_file:
       - .env.docker
-    # 👇 Aggiungi questo blocco
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
@@ -100,14 +105,15 @@ services:
   worker:
     build: ./worker
     container_name: worker
+    restart: unless-stopped  # 👈 AGGIUNGI QUESTA RIGA
     ports:
-      - "9090:9090"
+      # 👇 FIX: Solo connessioni locali
+      - "127.0.0.1:9090:9090"
     env_file:
       - .env.docker
     environment:
       HOST_TMP_DIR: ${HOST_TMP_DIR:-${PWD}/worker-tmp}
-      PORT: "9090"   # 👈 OVERRIDE ESPLICITO: vince su quello del .env.docker
-    # 👇 Aggiungi questo blocco
+      PORT: "9090"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
       interval: 10s

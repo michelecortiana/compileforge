@@ -221,6 +221,13 @@ Token get_next_token() {
         }
         //estraggo stringa         
         int length = current_pos - start_pos;
+        
+        // 👇 FIX SICUREZZA: Limite imposto agli identificatori
+        if (length > 63) {
+            printf("Errore lessicale: identificatore troppo lungo (max 63 caratteri) alla riga %d, colonna %d\n", current_line, current_col);
+            exit(1);
+        }
+        
         char* text = malloc(length + 1);
         strncpy(text, &source_code[start_pos], length);
         text[length] = '\0';

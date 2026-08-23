@@ -16,6 +16,10 @@ COPY . .
 # Compila il codice TypeScript in JavaScript
 RUN npm run build
 
+# 👇 NUOVE RIGHE: Assegna i permessi e abbassa i privilegi
+RUN chown -R node:node /app
+USER node
+
 # Esponi la porta usata dal Gateway
 EXPOSE 8080
 

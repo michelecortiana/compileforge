@@ -14,6 +14,13 @@ jobs:
     - name: Checkout del codice
       uses: actions/checkout@v4
 
+    # 👇 1. NUOVO FIX: Step per buildare la UI e intercettare errori TypeScript su React
+    - name: Build e Test della UI (Frontend)
+      working-directory: ./ui # <-- Cambia in '.' se React è nella cartella principale del repo
+      run: |
+        npm ci
+        npm run build
+
     - name: Prepara file .env per i container
       run: |
         echo "PORT=8080" >> .env.docker
@@ -60,8 +67,8 @@ jobs:
             "source_code": "int main() { return 0; }"
           }')
 
-        # Estrai il job_id usando jq
-        JOB_ID=$(echo $RESPONSE | jq -r '.job_id')
+        # 👇 2. FIX: Aggiunte le virgolette attorno a "$RESPONSE"
+        JOB_ID=$(echo "$RESPONSE" | jq -r '.job_id')
         
         if [ -z "$JOB_ID" ] || [ "$JOB_ID" == "null" ]; then
           echo "❌ Errore: Nessun job_id restituito."
@@ -80,7 +87,8 @@ jobs:
           STATUS_RESP=$(curl -s -X GET http://localhost:8080/status/$JOB_ID \
             -H "x-api-key: test-api-key-123")
           
-          STATUS=$(echo $STATUS_RESP | jq -r '.status')
+          # 👇 2. FIX: Aggiunte le virgolette attorno a "$STATUS_RESP"
+          STATUS=$(echo "$STATUS_RESP" | jq -r '.status')
           
           echo "Tentativo $ATTEMPT: Stato = $STATUS"
           

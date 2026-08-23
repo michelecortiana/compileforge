@@ -133,7 +133,8 @@ async function apiRoutes(fastify: FastifyInstance) {
             required: ['source_code', 'language'],
             properties: {
                 source_code: { type: 'string', minLength: 1 },
-                language: { type: 'string', minLength: 1 }
+                // 👇 FIX: Ora accetta esclusivamente 'c' come valore
+                language: { type: 'string', enum: ['c'] }
             }
         }
     };
@@ -301,7 +302,8 @@ async function apiRoutes(fastify: FastifyInstance) {
     fastify.get('/metrics', async (request, reply) => {
         const authHeader = request.headers.authorization;
         
-        if (authHeader !== `Bearer ${METRICS_TOKEN}`) {
+        // 👇 FIX: Usa safeCompare al posto dell'operatore !==
+        if (!safeCompare(authHeader, `Bearer ${METRICS_TOKEN}`)) {
             request.log.warn('Tentativo di accesso non autorizzato a /metrics');
             return reply.status(401).send({ error: 'Unauthorized: Invalid metrics token' });
         }
@@ -309,10 +311,9 @@ async function apiRoutes(fastify: FastifyInstance) {
         // Usa register direttamente
         reply.header('Content-Type', register.contentType);
         
-        // Usa register direttamente
         return reply.send(await register.metrics());
     });
-
+    
     // 👇 Rotta protetta dal middleware
     fastify.get('/download/:job_id', { preHandler: requireApiKey }, async (request, reply) => {
         const { job_id } = request.params as { job_id: string };

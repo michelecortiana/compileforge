@@ -177,7 +177,7 @@ void expect(TokenType type) {
         advance();
     } else {
         char err_msg[256];
-        sprintf(err_msg, "Mi aspettavo %s, ma ho trovato %s ('%s')", 
+        snprintf(err_msg, sizeof(err_msg), "Mi aspettavo %s, ma ho trovato %s ('%s')", 
                 get_token_name(type), 
                 get_token_name(current_token.type), 
                 current_token.value ? current_token.value : "Simbolo");

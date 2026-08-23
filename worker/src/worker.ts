@@ -8,6 +8,7 @@ import path from 'path';
 import { eq } from 'drizzle-orm'; 
 import client from 'prom-client';
 import express from 'express';
+import crypto from 'crypto';
 
 // Ora questi moduli troveranno le variabili pronte all'uso
 import { initBroker, closeBroker, channel as rabbitChannel } from './rabbitmq';
@@ -17,6 +18,21 @@ import { redisClient } from './redis';
 
 const execAsync = util.promisify(exec);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function safeCompare(input: string | undefined, secret: string): boolean {
+    if (!input) return false;
+    
+    const inputBuffer = Buffer.from(input);
+    const secretBuffer = Buffer.from(secret);
+
+    if (inputBuffer.length !== secretBuffer.length) {
+        crypto.timingSafeEqual(secretBuffer, secretBuffer);
+        return false;
+    }
+
+    return crypto.timingSafeEqual(inputBuffer, secretBuffer);
+}
+
 // === CONTROLLI DI SICUREZZA E VARIABILI GLOBALI ===
 const METRICS_TOKEN = process.env.METRICS_TOKEN;
 if (!METRICS_TOKEN) {
@@ -59,7 +75,8 @@ app.get('/health', (req, res) => {
 app.get('/metrics', async (req, res) => {
     const authHeader = req.headers.authorization;
 
-    if (authHeader !== `Bearer ${METRICS_TOKEN}`) {
+    // 👇 FIX: Usa safeCompare al posto dell'operatore !==
+    if (!safeCompare(authHeader, `Bearer ${METRICS_TOKEN}`)) {
         console.warn('Tentativo di accesso non autorizzato a /metrics sul Worker');
         return res.status(401).send({ error: 'Unauthorized: Invalid metrics token' });
     }
@@ -208,6 +225,9 @@ async function startWorker() {
                     if (dockerError.killed) {
                         finalOutput = `Errore: Tempo limite di esecuzione (${timeoutMs}ms) superato.`;
                     }
+                } finally {
+                    // 👇 NUOVO: Forza la rimozione del container anche se il client docker è andato in timeout
+                    await execAsync(`docker rm -f ${containerName}`).catch(() => {});
                 }
 
                 let outputIr = null;

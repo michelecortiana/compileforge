@@ -7,7 +7,7 @@ interface NavbarProps {
   onToggleTheme: () => void;
   onSelectSnippet: (code: string) => void;
   onOpenHistory: () => void;
-  onOpenInfo: () => void; // 👈 NUOVA PROP
+  onOpenInfo: () => void;
 }
 
 const CODE_SNIPPETS = [
@@ -26,7 +26,8 @@ const CODE_SNIPPETS = [
 ];
 
 export default function Navbar({ onCompile, status, theme, onToggleTheme, onSelectSnippet, onOpenHistory, onOpenInfo }: NavbarProps) {
-  const isWorking = status === 'submitting' || status === 'pending' || status === 'compiling'; 
+  // 👇 FIX: Inseriti gli stati reali emessi dal worker ('processing' e 'connected')
+  const isWorking = status === 'submitting' || status === 'pending' || status === 'processing' || status === 'connected'; 
   const isDark = theme === 'dark';
 
   return (
@@ -62,7 +63,6 @@ export default function Navbar({ onCompile, status, theme, onToggleTheme, onSele
       </div>
       
       <div className="flex items-center gap-3">
-        {/* 👇 NUOVO BOTTONE INFO COMPILATORE */}
         <button
           onClick={onOpenInfo}
           className={`px-3 py-1.5 text-sm font-semibold rounded transition-colors border ${

@@ -616,7 +616,7 @@ char* generate_ir(AST_Node* node) {
             char* var_name = node->data.var_name;
             if (!symbol_exists(var_name)) {
                 char err_msg[128];
-                sprintf(err_msg, "Uso di una variabile non dichiarata: '%s'", var_name);
+                snprintf(err_msg, sizeof(err_msg), "Uso di una variabile non dichiarata: '%s'", var_name);
                 semantic_error(node, err_msg);
             }
             
@@ -682,7 +682,7 @@ char* generate_ir(AST_Node* node) {
             char* var_name = node->data.assign.var_name;
             if (!symbol_exists(var_name)) {
                 char err_msg[128];
-                sprintf(err_msg, "Impossibile assegnare un valore: variabile '%s' non dichiarata", var_name);
+                snprintf(err_msg, sizeof(err_msg), "Impossibile assegnare un valore: variabile '%s' non dichiarata", var_name);
                 semantic_error(node, err_msg);
             }
 
@@ -964,7 +964,7 @@ char* generate_ir(AST_Node* node) {
             }
             if (!symbol_exists(child->data.var_name)) {
                 char err_msg[128];
-                sprintf(err_msg, "Impossibile ottenere l'indirizzo: variabile '%s' non dichiarata", child->data.var_name);
+                snprintf(err_msg, sizeof(err_msg), "Impossibile ottenere l'indirizzo: variabile '%s' non dichiarata", child->data.var_name);
                 semantic_error(node, err_msg);
             }
             
