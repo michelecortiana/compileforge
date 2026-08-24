@@ -20,16 +20,20 @@
   - [4. Secrets Management](#4-secrets-management)
   - [5. Least-Privilege Containers](#5-least-privilege-containers)
 - [Monitoring & Observability](#monitoring--observability)
+  - [Included Dashboards](#included-dashboards)
+  - [Accessing Grafana](#accessing-grafana)
 - [Technologies Used](#technologies-used)
 - [Installation Guide](#installation-guide)
   - [Prerequisites](#prerequisites)
   - [1. Clone the Repository](#1-clone-the-repository)
-  - [2. Configure Secrets](#2-configure-secrets)
-  - [3. Build the Compiler Image](#3-build-the-compiler-image)
-  - [4. Launch the Infrastructure](#4-launch-the-infrastructure)
-  - [5. Run the UI (Development Mode)](#5-run-the-ui-development-mode)
-  - [6. Submit Your First Compile Job](#6-submit-your-first-compile-job)
+  - [2. Run the Automated Setup](#2-run-the-automated-setup)
+  - [3. Run the UI (Development Mode)](#3-run-the-ui-development-mode)
+  - [4. Submit Your First Compile Job](#4-submit-your-first-compile-job)
+- [Environment Variables Reference](#environment-variables-reference)
+- [Load Testing](#load-testing)
+- [API Reference](#api-reference)
 - [Continuous Integration (CI/CD)](#continuous-integration-cicd)
+- [Troubleshooting](#troubleshooting)
 - [Project Structure](#project-structure)
 - [License](#license)
 
@@ -200,12 +204,26 @@ To ensure the infrastructure remains healthy and to track the performance of the
 * **Prometheus:** Acts as the time-series database. It actively scrapes custom metrics exposed by the Fastify Gateway, the Node.js Worker, and the RabbitMQ broker. The scraping endpoints are secured and authenticated via a shared `METRICS_TOKEN`.
 * **Grafana:** Provides the visual interface. It is configured with "zero-config provisioning," meaning the Prometheus datasource and the official CompileForge dashboards are automatically loaded on startup without requiring manual GUI setup.
 
+<a name="included-dashboards"></a>
 ### Included Dashboards
 The pre-provisioned dashboard gives you real-time insights into the system's core vital signs:
 * **Total Jobs Submitted:** The absolute volume of compile requests handled by the Gateway.
 * **Jobs in Queue:** The current depth of the `compile_jobs` RabbitMQ queue, helping you identify bottlenecks if the Worker is struggling to keep up.
 * **Average Compile Duration:** The mean time taken by the sandboxed compiler container to process the C source code and generate the assembly/executable.
 * **Success/Failure Rates:** A breakdown of job outcomes to quickly spot systemic failures or broken payloads.
+
+<p align="center">
+  <img src="./docs/assets/grafana-dashboard.png" alt="Grafana dashboard showing total jobs submitted, jobs in queue, average compile duration, and success/failure rate for CompileForge" width="800"/>
+</p>
+
+<a name="accessing-grafana"></a>
+### Accessing Grafana
+1. Once the infrastructure is running (see [Launch the Infrastructure](#4-launch-the-infrastructure)), open **http://localhost:3000** in your browser.
+2. Log in with the default credentials configured in `docker-compose.yml`: `admin` / `admin`. Grafana will prompt you to set a new password on first login — safe to skip for a local-only setup, or set your own if you prefer.
+3. The Prometheus datasource and the **CompileForge Metrics** dashboard are already provisioned automatically — no manual setup required. From the left sidebar, go to **Dashboards → CompileForge Metrics**.
+4. Submit a few compile jobs from the UI, then watch the dashboard update (it refreshes automatically every 30 seconds, or click the refresh icon top-right for an instant update).
+
+> If the dashboard loads but every panel shows "No data", double-check that `METRICS_TOKEN` matches exactly across `.env.docker` and `secrets/metrics_token.txt` — see [Troubleshooting](#troubleshooting).
 
 <a name="technologies-used"></a>
 ## Technologies Used
@@ -227,49 +245,30 @@ CompileForge is built on a modern, robust stack designed for high-performance as
 
 <a name="prerequisites"></a>
 ### Prerequisites
-* **Docker & Docker Compose V2:** required — this project uses `depends_on` health
-  conditions that are not supported by the legacy `docker-compose` v1 binary.
+* **Docker & Docker Compose V2:** required — this project uses `depends_on` health conditions that are not supported by the legacy `docker-compose` v1 binary.
 * **Node.js (v18+):** *Optional*, required only to run the React frontend locally in development mode.
 
 <a name="1-clone-the-repository"></a>
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/michelecortiana/compileforge.git
+git clone [https://github.com/michelecortiana/compileforge.git](https://github.com/michelecortiana/compileforge.git)
 cd compileforge
 ```
 
-<a name="2-configure-secrets"></a>
-### 2. Configure Secrets
-Security credentials are purposefully excluded from version control. You must create the environment files from the provided templates and fill in your own secure values (e.g., strong passwords and random 64-character hex strings for tokens).
+<a name="2-run-the-automated-setup"></a>
+### 2. Run the Automated Setup
+CompileForge includes an automated Bash script that handles all the heavy lifting. It generates secure cryptographic API keys and tokens, writes the necessary `.env` files, builds the isolated compiler image, launches the microservices, and synchronizes the database schema.
 
+Make the script executable and run it:
 ```bash
-cp .env.example .env.docker
-cp .env.example .env
-cp ui/.env.local.example ui/.env.local
-cp secrets/metrics_token.txt.example secrets/metrics_token.txt
-```
-**Important:** Ensure that the `API_KEY` and `METRICS_TOKEN` values match exactly across all your `.env` files and the `secrets/metrics_token.txt` file.
-
-<a name="3-build-the-compiler-image"></a>
-### 3. Build the Compiler Image
-Before starting the backend, you must build the isolated Docker image that the Worker will use to sandbox the C compiler:
-```bash
-docker build -t compiler-image ./compiler-image
+chmod +x setup.sh
+./setup.sh
 ```
 
-<a name="4-launch-the-infrastructure"></a>
-### 4. Launch the Infrastructure
-Spin up the entire microservices stack (Postgres, Redis, RabbitMQ, Gateway, Worker, Prometheus, and Grafana) in the background:
-```bash
-docker compose up -d --build
-```
-*Note: On your very first run, you must synchronize the database schema using Drizzle ORM:*
-```bash
-docker exec gateway npx drizzle-kit push --force
-```
+> **Note on Passwords:** The script dynamically generates secure `API_KEY` and `METRICS_TOKEN` values. However, the internal database (Postgres), message broker (RabbitMQ), and Grafana rely on the hardcoded default passwords (`admin`/`pass` or `admin`/`admin`) defined in `docker-compose.yml`. Because the entire infrastructure is strictly bound to `127.0.0.1` and isolated by design, this is perfectly safe for a local development environment.
 
-<a name="5-run-the-ui-development-mode"></a>
-### 5. Run the UI (Development Mode)
+<a name="3-run-the-ui-development-mode"></a>
+### 3. Run the UI (Development Mode)
 Open a new terminal window, navigate to the frontend directory, install the dependencies, and start the React development server:
 ```bash
 cd ui
@@ -277,9 +276,51 @@ npm install
 npm run dev
 ```
 
-<a name="6-submit-your-first-compile-job"></a>
-### 6. Submit Your First Compile Job
+<a name="4-submit-your-first-compile-job"></a>
+### 4. Submit Your First Compile Job
 Open your browser and navigate to `http://localhost:5173`. Write your C code in the editor, hit the compile button, and watch the microservices seamlessly queue, sandbox, compile, and return your x86-64 assembly and executable!
+
+<a name="environment-variables-reference"></a>
+## Environment Variables Reference
+
+| Variable | File | Used by | Description |
+|---|---|---|---|
+| `API_KEY` | `.env.docker` | Gateway | Shared secret required in `x-api-key` header for all Gateway requests |
+| `METRICS_TOKEN` | `.env.docker`, `secrets/metrics_token.txt` | Gateway, Worker, Prometheus | Bearer token securing `/metrics` endpoints |
+| `DATABASE_URL` | `.env.docker` | Gateway, Worker | Postgres connection string |
+| `REDIS_URL` | `.env.docker` | Gateway, Worker | Redis connection string (Pub/Sub) |
+| `RABBITMQ_URL` | `.env.docker` | Gateway, Worker | RabbitMQ connection string |
+| `ALLOWED_ORIGINS` | `.env.docker` | Gateway | CORS origin allow-list (defaults to the local UI dev server) |
+| `HOST_TMP_DIR` | `.env` (root) | Worker | Absolute **host** path bind-mounted into the Worker, used by Docker-outside-of-Docker to share compile artifacts with the sandboxed compiler container |
+| `VITE_API_BASE_URL` | `ui/.env.local` | UI | Gateway base URL the browser talks to |
+| `VITE_API_KEY` | `ui/.env.local` | UI | Same value as `API_KEY` — embedded in the client bundle (see [Security Model](#security-model)) |
+
+<a name="load-testing"></a>
+## Load Testing
+
+A simple load-testing script is included at the repository root to verify your setup can handle concurrent compile requests once everything is up and running.
+
+```bash
+export API_KEY=your-api-key-here
+./stress_test.sh
+```
+
+This fires 50 concurrent `POST /compile` requests against the Gateway and logs the HTTP status of each one to `stress_results.log`. On a correctly configured local setup, you should see 50/50 requests accepted with `HTTP 202` — confirming the Gateway, RabbitMQ, and the Worker's job queueing all hold up correctly under concurrent load.
+
+> The Gateway's rate limiter defaults to 100 requests/minute per IP, so 50 concurrent requests from a single machine comfortably stay under the limit. If you raise the request count for your own testing and start seeing `HTTP 429` responses instead, that's the rate limiter doing its job, not a bug — see [Troubleshooting](#troubleshooting) if the results look different from this.
+
+<a name="api-reference"></a>
+## API Reference
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/compile` | API Key | Submit C source code, returns a `job_id` |
+| `GET` | `/status/:job_id` | API Key | Get current job status and results (polling) |
+| `GET` | `/status/:job_id/stream` | API Key (query param) | Server-Sent Events stream of live job status |
+| `GET` | `/jobs?limit=N` | API Key | List recent jobs |
+| `GET` | `/download/:job_id` | API Key | Download the compiled executable |
+| `GET` | `/health` | — | Liveness check |
+| `GET` | `/metrics` | Bearer token | Prometheus scrape endpoint |
 
 <a name="continuous-integration-cicd"></a>
 ## Continuous Integration (CI/CD)
@@ -290,6 +331,24 @@ The automated workflow validates both the codebase and the infrastructure by per
 * **Frontend Integrity:** Runs a strict production build of the React UI to catch TypeScript and ESLint errors before they reach production.
 * **Infrastructure Spin-up:** Automatically builds the isolated `compiler-image` and orchestrates the full microservices stack (Gateway, Worker, RabbitMQ, Redis, Postgres) using Docker Compose directly inside the CI runner.
 * **End-to-End (E2E) Testing:** Submits a mock C program to the Gateway API via HTTP, extracts the generated Job ID, and polls the status endpoint to verify that the entire asynchronous lifecycle (Queueing ➔ Sandboxing ➔ Compiling ➔ Database Updates) completes successfully without deadlocks or crashes.
+
+<a name="troubleshooting"></a>
+## Troubleshooting
+
+**Prometheus dashboards are empty / Grafana panels show "No data"**
+`METRICS_TOKEN` in your `.env.docker` doesn't match the value in `secrets/metrics_token.txt` — they must be identical.
+
+**Worker fails to reach the Docker daemon / `permission denied` on `docker.sock`**
+Make sure `/var/run/docker.sock` is mounted into the Worker container and that the user running Docker Compose has permission to access it (add yourself to the `docker` group on Linux).
+
+**Sandboxed compiler container can't find the source file**
+`HOST_TMP_DIR` must point to an **absolute path on the host machine**, not inside a container. On first run, create it if it doesn't already exist: `mkdir -p worker-tmp`.
+
+**`npm ci` fails with an ERESOLVE peer dependency error in the UI**
+Make sure you're on the `typescript` version pinned in `ui/package.json` — newer TypeScript majors are sometimes ahead of what `typescript-eslint` officially supports.
+
+**Ports already in use**
+All services bind to `127.0.0.1` on fixed ports (5432, 5672, 6379, 8080, 9090, 9091, 15672, 3000). If you already have Postgres/Redis/RabbitMQ running locally, override the conflicting port via the corresponding `${...}` variable in `docker-compose.yml`.
 
 <a name="project-structure"></a>
 ## Project Structure
