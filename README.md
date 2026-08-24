@@ -1,21 +1,21 @@
 # CompileForge
-Cloud-based microservices architecture (API Gateway, RabbitMQ, Worker) exposing a custom C compiler.
 
-## 🔒 Configurazione Sicurezza e Avvio Rapido
+> A locally-hosted, microservices-based Compiler-as-a-Service exposing a custom C compiler through a web UI — submit C source code, watch it compile in a sandboxed container, and download the resulting executable.
 
-Prima di avviare l'infrastruttura, devi generare i tuoi segreti locali. I file contenenti i segreti reali sono volutamente ignorati da Git per motivi di sicurezza.
+## 📸 Quick Showcase
 
-**1. Configura le variabili d'ambiente:**
-```bash
-cp .env.example .env.docker
-cp .env.example .env
-(Apri i file appena copiati e inserisci le tue chiavi reali per API_KEY e METRICS_TOKEN)
+<p align="center">
+  <img src="./docs/assets/editor-view.png" alt="CompileForge editor with C code and Monaco syntax highlighting" width="800"/>
+</p>
 
-2. Configura il token di Prometheus:
+<p align="center">
+  <em>Write C code in the browser, compile it, and inspect the IR, assembly, and execution output — all in one view.</em>
+</p>
 
-Bash
-cp secrets/metrics_token.txt.example secrets/metrics_token.txt
-(⚠️ IMPORTANTE: Inserisci dentro secrets/metrics_token.txt lo stesso identico valore che hai assegnato a METRICS_TOKEN nei file .env. Se i valori non combaciano, Prometheus non riuscirà a leggere le metriche e le dashboard di Grafana resteranno vuote).
+<p align="center">
+  <img src="./docs/assets/compile-flow.gif" alt="Full compile flow: submit code, watch job status update live via SSE, download the executable" width="800"/>
+</p>
 
-
-Piazzalo nel `README.md` e hai un blocco note formattato da dio a prova di amnesia!
+<p align="center">
+  <em>Real-time job status via Server-Sent Events — no manual refresh needed.</em>
+</p>
