@@ -231,3 +231,8 @@ compileforge/
 ├── stress_test.sh           # Bash script for local load testing and E2E validation
 └── README.md                # You are here
 ```
+
+## 📄 License
+
+This project is open-source and available under the **MIT License**.
+See the [LICENSE](LICENSE) file for more details.
