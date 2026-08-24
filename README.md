@@ -2,7 +2,39 @@
 
 > A locally-hosted, microservices-based Compiler-as-a-Service exposing a custom C compiler through a web UI — submit C source code, watch it compile in a sandboxed container, and download the resulting executable.
 
-## 📸 Quick Showcase
+## Table of Contents
+
+- [Quick Showcase](#quick-showcase)
+- [Overview & Architecture](#overview--architecture)
+  - [What is CompileForge](#what-is-compileforge)
+  - [Microservices Architecture](#microservices-architecture)
+  - [Job Lifecycle](#job-lifecycle)
+- [The Compiler Engine](#the-compiler-engine)
+  - [Core Features](#core-features)
+  - [Known Limitations](#known-limitations)
+- [Service Limitations](#service-limitations)
+- [Security Model](#security-model)
+  - [1. Local-Only by Design](#1-local-only-by-design)
+  - [2. Sandboxed Execution (Docker-outside-of-Docker)](#2-sandboxed-execution-docker-outside-of-docker)
+  - [3. API Key Authentication](#3-api-key-authentication)
+  - [4. Secrets Management](#4-secrets-management)
+  - [5. Least-Privilege Containers](#5-least-privilege-containers)
+- [Monitoring & Observability](#monitoring--observability)
+- [Technologies Used](#technologies-used)
+- [Installation Guide](#installation-guide)
+  - [Prerequisites](#prerequisites)
+  - [1. Clone the Repository](#1-clone-the-repository)
+  - [2. Configure Secrets](#2-configure-secrets)
+  - [3. Build the Compiler Image](#3-build-the-compiler-image)
+  - [4. Launch the Infrastructure](#4-launch-the-infrastructure)
+  - [5. Run the UI (Development Mode)](#5-run-the-ui-development-mode)
+  - [6. Submit Your First Compile Job](#6-submit-your-first-compile-job)
+- [Continuous Integration (CI/CD)](#continuous-integration-cicd)
+- [Project Structure](#project-structure)
+- [License](#license)
+
+<a name="quick-showcase"></a>
+## Quick Showcase
 
 <p align="center">
   <img src="./docs/assets/editor-view.png" alt="CompileForge editor with C code and Monaco syntax highlighting" width="800"/>
@@ -21,13 +53,16 @@
 </p>
 
 
+<a name="overview--architecture"></a>
 ## Overview & Architecture
 
+<a name="what-is-compileforge"></a>
 ### What is CompileForge
 CompileForge is a self-hosted **Compiler-as-a-Service** platform. It wraps a custom, from-scratch C compiler (see [`compiler-image/`](./compiler-image)) behind a web UI and a microservices backend, so you can submit C source code from the browser and get back the intermediate representation, the generated x86-64 assembly, and a runnable executable — without installing a toolchain locally.
 
 It is designed to run **entirely on your own machine**. There is no remote deployment, no public endpoint, and no multi-tenant hosting — every service in this repository is meant to be built and run locally via Docker Compose. See [Security Model](#security-model) for why this matters and how it's enforced.
 
+<a name="microservices-architecture"></a>
 ### Microservices Architecture
 Instead of compiling code synchronously inside a single web server, CompileForge splits the work across dedicated services so that a slow or malicious compile job can never block the API or take down the whole system.
 
@@ -41,6 +76,7 @@ Instead of compiling code synchronously inside a single web server, CompileForge
 | **Redis** | Pub/Sub backbone for real-time status updates — the Gateway subscribes on behalf of connected clients and relays worker progress over SSE. |
 | **Prometheus + Grafana** | Metrics and dashboards for job throughput, queue depth, compile duration, and success/failure rate. |
 
+<a name="job-lifecycle"></a>
 ### Job Lifecycle
 
 ```text
@@ -74,13 +110,15 @@ Instead of compiling code synchronously inside a single web server, CompileForge
 
 If a job fails three times, it's routed to a Dead Letter Queue instead of retrying forever — so a systematically broken job can't loop indefinitely and starve the queue for everyone else.
 
-## ⚙️ The Compiler Engine
+<a name="the-compiler-engine"></a>
+## The Compiler Engine
 
 The beating heart of CompileForge is not a standard GCC or Clang wrapper, but a **custom C compiler written entirely from scratch**. It translates raw C source code all the way down to x86-64 assembly instructions.
 
-To keep this document focused, the deep technical breakdown of the compiler's internal pipeline has been kept separate in its own dedicated repository. 
-👉 **[Read the full Compiler Engine README here](https://github.com/michelecortiana/my-compiler)**.
+To keep this document focused, the deep technical breakdown of the compiler's internal pipeline has been kept separate in its own dedicated repository.
+**[Read the full Compiler Engine README here](https://github.com/michelecortiana/my-compiler)**.
 
+<a name="core-features"></a>
 ### Core Features
 * **Custom Lexer & Parser:** A handcrafted recursive descent parser that builds a full Abstract Syntax Tree (AST).
 * **AST Optimizations:** Implements compile-time optimizations like Constant Folding and basic Dead Code Elimination.
@@ -89,42 +127,73 @@ To keep this document focused, the deep technical breakdown of the compiler's in
 * **Language Support:** Handles pointers (with multi-level dereferencing), arrays, `struct`s (with precise memory padding/alignment), and standard control flow (`if`, `while`, `for`, `break`, `continue`).
 * **Memory Management:** Supports dynamic heap allocation (`malloc`, `free`) and accurate compile-time `sizeof` evaluation.
 
-### ⚠️ Known Limitations
-Because this compiler is an educational engineering project, it intentionally omits several features mandated by the full ISO C standard to maintain a manageable, streamlined codebase. 
+<a name="known-limitations"></a>
+### Known Limitations
+Because this compiler is an educational engineering project, it intentionally omits several features mandated by the full ISO C standard to maintain a manageable, streamlined codebase.
 
-Notably, there is **no preprocessor** (no `#include` or `#define`), no support for multidimensional arrays, no unsigned types, and functions cannot return `void`. 
+Notably, there is **no preprocessor** (no `#include` or `#define`), no support for multidimensional arrays, no unsigned types, and functions cannot return `void`.
 
 For the complete and detailed list of language constraints, please refer to the **[Known Limitations](https://github.com/michelecortiana/my-compiler#known-limitations)** section of the compiler's repository (this information is also available directly within the web UI's info panel).
 
-## 🔒 Security Model
+<a name="service-limitations"></a>
+## Service Limitations
 
-Compiling and executing arbitrary, untrusted C code is inherently dangerous. To mitigate the massive security risks associated with Remote Code Execution (RCE), CompileForge employs a strict **Defense-in-Depth** strategy. 
+Beyond the C language constraints of the compiler itself, the service layer imposes its own operational limits by design:
 
+* **C only** — the `language` field currently only accepts `"c"`; other values are rejected before reaching the queue.
+* **Source size cap** — requests are capped at ~100KB (enforced both client-side in the editor and server-side on the Gateway's request body).
+* **Execution timeout** — each sandboxed compile job has a hard time limit; jobs that exceed it are killed and marked as `failed`.
+* **Single worker, sequential jobs** — by default, one Worker instance processes one job at a time. Under load, jobs queue in RabbitMQ rather than running in parallel, unless you scale the Worker service yourself.
+* **Sandbox resource ceiling** — each compile container is capped at 256MB RAM, 0.5 CPU, and 64 PIDs, regardless of what the submitted program tries to do.
+* **No retry beyond 3 attempts** — a job that fails 3 times is routed to a Dead Letter Queue and will not be retried automatically.
+* **No per-user isolation** — the Gateway uses a single shared API key with no concept of user accounts; anyone with the key can view or download any job's history and output.
+* **x86-64 Linux executables only** — compiled binaries target the Linux System V ABI and will not run natively on Windows or macOS without a compatible environment (e.g. WSL, a Linux VM, or Docker).
+
+<a name="security-model"></a>
+## Security Model
+
+Compiling and executing arbitrary, untrusted C code is inherently dangerous. To mitigate the massive security risks associated with Remote Code Execution (RCE), CompileForge employs a strict **Defense-in-Depth** strategy.
+
+<a name="1-local-only-by-design"></a>
 ### 1. Local-Only by Design
 CompileForge is explicitly designed to be a local-only tool. It is **not** meant to be deployed on a public-facing server.
-* All exposed ports in the `docker-compose.yml` (Gateway, RabbitMQ, Postgres, Grafana) are strictly bound to the loopback interface (`127.0.0.1`). 
+* All exposed ports in `docker-compose.yml` are strictly bound to the loopback
+  interface (`127.0.0.1`) — covering every service (Gateway, Worker, Postgres,
+  RabbitMQ, Redis, Prometheus, and Grafana).
 * The infrastructure is accessible only from your local machine, completely preventing LAN or WAN access.
 
+<a name="2-sandboxed-execution-docker-outside-of-docker"></a>
 ### 2. Sandboxed Execution (Docker-outside-of-Docker)
-The Worker service does not run the compiler directly. Instead, it uses the Docker-outside-of-Docker (DooD) pattern by mounting the host's Docker socket. For every single compile job, it spawns a short-lived, deeply restricted container. 
+The Worker service does not run the compiler directly. Instead, it uses the Docker-outside-of-Docker (DooD) pattern by mounting the host's Docker socket. For every single compile job, it spawns a short-lived, deeply restricted container.
 
 Each `compiler-image` container is severely neutered using the following runtime constraints:
 * **No Network:** `--network none` ensures absolute isolation from the internet and internal Docker networks.
 * **Dropped Capabilities:** `--cap-drop ALL` and `--security-opt no-new-privileges` prevent any form of privilege escalation inside the container.
 * **Resource Quotas:** Constrained via `--memory=256m`, `--cpus=0.5`, and `--pids-limit=64` to prevent fork bombs, infinite loops, and memory exhaustion.
 * **Non-Root Execution:** The process runs as a restricted, unprivileged user.
-* **Strict Timeouts:** Containers are forcefully killed and pruned (`--rm`) if they exceed the maximum allowed execution time, leaving no orphaned processes behind.
+* **Strict Timeouts & Guaranteed Cleanup:** Every compilation is bound by a hard execution timeout. Because simply terminating the `docker run` client process does not stop the underlying container, the Worker explicitly force-removes it (`docker rm -f`) within a `finally` block. This guarantees zero accumulation of orphaned containers, regardless of whether the job succeeds, fails, or times out.
 
+<a name="3-api-key-authentication"></a>
 ### 3. API Key Authentication
 Even within the local environment, all interactions with the Gateway (such as submitting a job via `POST /compile` or polling via `GET /status/:id`) are protected by a mandatory API Key (`x-api-key` header). Unauthorized requests are immediately rejected by the Fastify server.
 
+> **Note:** Since the UI is a client-side SPA, the API key is embedded in the built JavaScript bundle. This is an accepted trade-off for a local, single-user tool — the key must never be reused if this project is ever adapted for a shared or public deployment.
+
+<a name="4-secrets-management"></a>
 ### 4. Secrets Management
 Sensitive credentials (database passwords, message broker logins, API keys, and Prometheus metrics tokens) are securely managed and actively excluded from version control via `.gitignore`.
 * The repository provides `.example` templates.
 * Users must manually generate their own secure credentials and inject them via `.env` (for host-level scripts), `.env.docker` (for the Compose stack), and `ui/.env.local` (for the React UI).
 * Prometheus authentication relies on a securely mounted file (`secrets/metrics_token.txt`) mapped directly into the container as a read-only volume.
 
-## 📊 Monitoring & Observability
+<a name="5-least-privilege-containers"></a>
+### 5. Least-Privilege Containers
+Beyond the compiler sandbox, the Gateway service itself runs its Node.js process as
+a non-root user inside its container (`USER node`), reducing the blast radius even
+of the parts of the system that only handle already-validated requests.
+
+<a name="monitoring--observability"></a>
+## Monitoring & Observability
 
 To ensure the infrastructure remains healthy and to track the performance of the compiler pipeline, CompileForge includes a fully pre-configured observability stack.
 
@@ -138,7 +207,8 @@ The pre-provisioned dashboard gives you real-time insights into the system's cor
 * **Average Compile Duration:** The mean time taken by the sandboxed compiler container to process the C source code and generate the assembly/executable.
 * **Success/Failure Rates:** A breakdown of job outcomes to quickly spot systemic failures or broken payloads.
 
-## 🛠️ Technologies Used
+<a name="technologies-used"></a>
+## Technologies Used
 
 CompileForge is built on a modern, robust stack designed for high-performance asynchronous processing and strict execution isolation.
 
@@ -152,18 +222,23 @@ CompileForge is built on a modern, robust stack designed for high-performance as
 | **Sandboxing & Infra**| Docker, Docker-outside-of-Docker (DooD) |
 | **Compiler Engine** | C (Custom implementation), GCC (for linking) |
 
-## 📦 Installation Guide
+<a name="installation-guide"></a>
+## Installation Guide
 
+<a name="prerequisites"></a>
 ### Prerequisites
-* **Docker & Docker Compose:** Required to run the core microservices infrastructure and the sandbox.
+* **Docker & Docker Compose V2:** required — this project uses `depends_on` health
+  conditions that are not supported by the legacy `docker-compose` v1 binary.
 * **Node.js (v18+):** *Optional*, required only to run the React frontend locally in development mode.
 
+<a name="1-clone-the-repository"></a>
 ### 1. Clone the Repository
 ```bash
-git clone [https://github.com/yourusername/compileforge.git](https://github.com/yourusername/compileforge.git)
+git clone https://github.com/michelecortiana/compileforge.git
 cd compileforge
 ```
 
+<a name="2-configure-secrets"></a>
 ### 2. Configure Secrets
 Security credentials are purposefully excluded from version control. You must create the environment files from the provided templates and fill in your own secure values (e.g., strong passwords and random 64-character hex strings for tokens).
 
@@ -173,14 +248,16 @@ cp .env.example .env
 cp ui/.env.local.example ui/.env.local
 cp secrets/metrics_token.txt.example secrets/metrics_token.txt
 ```
-*⚠️ **Important:** Ensure that the `API_KEY` and `METRICS_TOKEN` values match exactly across all your `.env` files and the `secrets/metrics_token.txt` file.*
+**Important:** Ensure that the `API_KEY` and `METRICS_TOKEN` values match exactly across all your `.env` files and the `secrets/metrics_token.txt` file.
 
+<a name="3-build-the-compiler-image"></a>
 ### 3. Build the Compiler Image
 Before starting the backend, you must build the isolated Docker image that the Worker will use to sandbox the C compiler:
 ```bash
 docker build -t compiler-image ./compiler-image
 ```
 
+<a name="4-launch-the-infrastructure"></a>
 ### 4. Launch the Infrastructure
 Spin up the entire microservices stack (Postgres, Redis, RabbitMQ, Gateway, Worker, Prometheus, and Grafana) in the background:
 ```bash
@@ -191,6 +268,7 @@ docker compose up -d --build
 docker exec gateway npx drizzle-kit push --force
 ```
 
+<a name="5-run-the-ui-development-mode"></a>
 ### 5. Run the UI (Development Mode)
 Open a new terminal window, navigate to the frontend directory, install the dependencies, and start the React development server:
 ```bash
@@ -199,19 +277,22 @@ npm install
 npm run dev
 ```
 
+<a name="6-submit-your-first-compile-job"></a>
 ### 6. Submit Your First Compile Job
 Open your browser and navigate to `http://localhost:5173`. Write your C code in the editor, hit the compile button, and watch the microservices seamlessly queue, sandbox, compile, and return your x86-64 assembly and executable!
 
-## 🔄 Continuous Integration (CI/CD)
+<a name="continuous-integration-cicd"></a>
+## Continuous Integration (CI/CD)
 
-CompileForge uses a robust GitHub Actions pipeline to ensure code quality and system integrity on every push or pull request to the `main` branch. 
+CompileForge uses a robust GitHub Actions pipeline to ensure code quality and system integrity on every push or pull request to the `main` branch.
 
 The automated workflow validates both the codebase and the infrastructure by performing the following checks:
 * **Frontend Integrity:** Runs a strict production build of the React UI to catch TypeScript and ESLint errors before they reach production.
 * **Infrastructure Spin-up:** Automatically builds the isolated `compiler-image` and orchestrates the full microservices stack (Gateway, Worker, RabbitMQ, Redis, Postgres) using Docker Compose directly inside the CI runner.
 * **End-to-End (E2E) Testing:** Submits a mock C program to the Gateway API via HTTP, extracts the generated Job ID, and polls the status endpoint to verify that the entire asynchronous lifecycle (Queueing ➔ Sandboxing ➔ Compiling ➔ Database Updates) completes successfully without deadlocks or crashes.
 
-## 📁 Project Structure
+<a name="project-structure"></a>
+## Project Structure
 
 The repository is organized into distinct, self-contained microservices and configuration directories:
 
@@ -229,10 +310,11 @@ compileforge/
 ├── prometheus.yml           # Prometheus metrics scraping configuration
 ├── rabbitmq_enabled_plugins # RabbitMQ plugin configuration (e.g., for Prometheus integration)
 ├── stress_test.sh           # Bash script for local load testing and E2E validation
-└── README.md                # You are here
+└── README.md
 ```
 
-## 📄 License
+<a name="license"></a>
+## License
 
 This project is open-source and available under the **MIT License**.
 See the [LICENSE](LICENSE) file for more details.
