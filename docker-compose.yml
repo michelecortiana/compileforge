@@ -130,6 +130,21 @@ services:
         condition: service_healthy
       db:                           
         condition: service_healthy
+  
+  ui:
+    build:
+      context: ./ui
+      args:
+        VITE_API_KEY: ${API_KEY}
+        VITE_API_BASE_URL: http://localhost:8080
+    container_name: ui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+
 
 volumes:
   pgdata:

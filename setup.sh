@@ -8,13 +8,19 @@ set -euo pipefail
 #   1. Verifies prerequisites (Docker, Docker Compose V2)
 #   2. Generates secure secrets and writes all .env files
 #   3. Builds the sandboxed compiler image
-#   4. Launches the full microservices stack
+#   4. Launches the full microservices stack (Gateway, Worker,
+#      Postgres, Redis, RabbitMQ, Prometheus, Grafana, and the
+#      containerized UI served via Nginx)
 #   5. Waits for the Gateway to be healthy
 #   6. Syncs the database schema (Drizzle)
 #
+# When it's done, the entire application is running — including
+# the UI — with no further manual steps required.
+#
 # Usage:
 #   ./setup.sh          # normal run, skips files that already exist
-#   ./setup.sh --reset  # force-regenerate all secrets and .env files
+#   ./setup.sh --reset  # force-regenerate all secrets, .env files,
+#                        # and rebuild the UI with the new API key
 # ─────────────────────────────────────────────────────────────
 
 RESET=false
@@ -38,6 +44,7 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 command -v openssl >/dev/null 2>&1 || fail "openssl is required to generate secure secrets."
+command -v curl >/dev/null 2>&1 || fail "curl is required to wait for the Gateway health check."
 
 info "Prerequisites OK."
 
@@ -64,10 +71,13 @@ if [[ "$write_env_files_needed" == true ]]; then
   METRICS_TOKEN=$(openssl rand -hex 32)
   HOST_TMP_DIR="$ROOT_DIR/worker-tmp"
 
-  # Root .env — used by docker-compose for variable interpolation
+  # Root .env — used by Docker Compose for variable interpolation
+  # (both HOST_TMP_DIR for the Worker bind mount, and API_KEY, which
+  # Compose needs to pass as a build arg into the UI image).
   if [[ ! -f .env ]]; then
     cat > .env <<EOF
 HOST_TMP_DIR=$HOST_TMP_DIR
+API_KEY=$API_KEY
 EOF
     info "Created .env"
   fi
@@ -90,7 +100,9 @@ EOF
     info "Created .env.docker"
   fi
 
-  # UI dev-mode config — must reuse the SAME API_KEY as .env.docker
+  # UI dev-mode config (only used if you run 'npm run dev' manually
+  # for hot-reload development — the containerized UI gets its key
+  # baked in at build time instead, via the Compose build arg).
   if [[ ! -f ui/.env.local ]]; then
     EXISTING_KEY=$(grep -E '^API_KEY=' .env.docker | cut -d= -f2)
     cat > ui/.env.local <<EOF
@@ -116,8 +128,8 @@ fi
 info "Building compiler-image (this runs once, cached afterwards)..."
 docker build -t compiler-image ./compiler-image
 
-# ── 4. Launch the infrastructure ───────────────────────────────
-info "Launching the microservices stack (Postgres, Redis, RabbitMQ, Gateway, Worker, Prometheus, Grafana)..."
+# ── 4. Launch the infrastructure (including the containerized UI) ─
+info "Launching the full stack — Postgres, Redis, RabbitMQ, Gateway, Worker, Prometheus, Grafana, and the UI..."
 docker compose up -d --build
 
 # ── 5. Wait for the Gateway to become healthy ──────────────────
@@ -139,16 +151,16 @@ docker exec gateway npx drizzle-kit push --force
 
 # ── Done ─────────────────────────────────────────────────────
 echo
-echo -e "${GREEN}CompileForge is up and running.${NC}"
+echo -e "${GREEN}CompileForge is up and running — no further steps needed.${NC}"
 echo
-echo "  Gateway API:        http://127.0.0.1:8080"
-echo "  Grafana dashboards: http://127.0.0.1:3000  (login: admin / admin)"
-echo "  RabbitMQ mgmt UI:   http://127.0.0.1:15672 (login: admin / pass)"
-echo
-echo "To start the UI (development mode), run:"
-echo "  cd ui && npm install && npm run dev"
-echo "Then open http://localhost:5173"
+echo "  App (UI):            http://127.0.0.1:5173"
+echo "  Gateway API:         http://127.0.0.1:8080"
+echo "  Grafana dashboards:  http://127.0.0.1:3000  (login: admin / admin)"
+echo "  RabbitMQ mgmt UI:    http://127.0.0.1:15672 (login: admin / pass)"
 echo
 echo "To stop everything:"
 echo "  docker compose down"
+echo
+echo "For UI development with hot-reload instead of the built container:"
+echo "  cd ui && npm install && npm run dev   (then open http://localhost:5173)"
 echo
