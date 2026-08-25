@@ -13,11 +13,12 @@ jobs:
     steps:
     - name: Checkout del codice
       uses: actions/checkout@v4
-      - name: Build e Test della UI (Frontend)
-        working-directory: ./ui
-        run: |
-          npm ci
-          npm run build
+
+    - name: Build e Test della UI (Frontend)
+      working-directory: ./ui
+      run: |
+        npm ci
+        npm run build
 
     - name: Prepara file .env per i container
       run: |
@@ -29,13 +30,11 @@ jobs:
         echo "API_KEY=test-api-key-123" >> .env.docker
         echo "METRICS_TOKEN=test-metrics-token" >> .env.docker
         echo "HOST_TMP_DIR=/tmp/compileforge_ci" >> .env.docker
-          echo "HOST_TMP_DIR=/tmp/compileforge_ci" >> $GITHUB_ENV
-        
+        echo "HOST_TMP_DIR=/tmp/compileforge_ci" >> $GITHUB_ENV
         mkdir -p /tmp/compileforge_ci
 
     - name: Build dell'immagine del compilatore (Docker-in-Docker)
-      run: |
-        docker build -t compiler-image ./compiler-image
+      run: docker build -t compiler-image ./compiler-image
 
     - name: Avvia infrastruttura con Docker Compose
       run: docker compose up -d --build db redis rabbitmq gateway worker
@@ -54,14 +53,14 @@ jobs:
 
     - name: Test d'Integrazione End-to-End (E2E)
       run: |
-          RESPONSE=$(curl -s -X POST http://localhost:8080/compile \
-          -H "Content-Type: application/json" \
-          -H "x-api-key: test-api-key-123" \
-          -d '{
-            "language": "c",
-            "source_code": "int main() { return 0; }"
-          }')
-          JOB_ID=$(echo "$RESPONSE" | jq -r '.job_id')
+        RESPONSE=$(curl -s -X POST http://localhost:8080/compile \
+        -H "Content-Type: application/json" \
+        -H "x-api-key: test-api-key-123" \
+        -d '{
+          "language": "c",
+          "source_code": "int main() { return 0; }"
+        }')
+        JOB_ID=$(echo "$RESPONSE" | jq -r '.job_id')
         
         if [ -z "$JOB_ID" ] || [ "$JOB_ID" == "null" ]; then
           echo "Errore: Nessun job_id restituito."
@@ -70,14 +69,15 @@ jobs:
         fi
         
         echo "Job inviato con successo. ID: $JOB_ID"
-          MAX_ATTEMPTS=15
+        
+        MAX_ATTEMPTS=15
         ATTEMPT=1
         STATUS="pending"
 
         while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
           STATUS_RESP=$(curl -s -X GET http://localhost:8080/status/$JOB_ID \
             -H "x-api-key: test-api-key-123")
-            STATUS=$(echo "$STATUS_RESP" | jq -r '.status')
+          STATUS=$(echo "$STATUS_RESP" | jq -r '.status')
           
           echo "Tentativo $ATTEMPT: Stato = $STATUS"
           
