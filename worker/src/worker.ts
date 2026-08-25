@@ -311,7 +311,7 @@ async function startWorker() {
             isShuttingDown = true;
 
             if (metricsServer) {
-                metricsServer.close(() => console.log('🔌 Server metriche chiuso.'));
+                metricsServer.close(() => console.log('Server metriche chiuso.'));
             }
 
             if (rabbitChannel && consumerTag) {
@@ -321,7 +321,7 @@ async function startWorker() {
             const timeout = 15000; 
             const startWait = Date.now();
             while (activeJobs > 0 && (Date.now() - startWait) < timeout) {
-                console.log(`⏳ Attesa fine elaborazione... (${activeJobs} job in corso)`);
+                console.log(`Attesa fine elaborazione... (${activeJobs} job in corso)`);
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
@@ -333,11 +333,11 @@ async function startWorker() {
 
             await closeBroker();
             await pool.end();
-            console.log('🔌 Connessione Postgres chiusa.');
+            console.log('Connessione Postgres chiusa.');
             await redisClient.quit();
-            console.log('🔌 Connessione Redis chiusa.');
+            console.log('Connessione Redis chiusa.');
 
-            console.log('👋 Worker spento con successo.');
+            console.log('Worker spento con successo.');
             process.exit(0);
         };
 

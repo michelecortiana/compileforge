@@ -321,7 +321,7 @@ async function apiRoutes(fastify: FastifyInstance) {
 
 const start = async () => {
     try {
-        console.log('⏳ Avvio dei controlli di sistema...');
+        console.log('Avvio dei controlli di sistema...');
 
         let dbRetries = 5;
         while (dbRetries > 0) {
@@ -344,7 +344,7 @@ const start = async () => {
                 console.log('Connessione a Redis verificata');
                 break;
             } catch (error) {
-                console.error(`⏳ Errore connessione Redis. Tentativi rimasti: ${redisRetries - 1}`);
+                console.error(`Errore connessione Redis. Tentativi rimasti: ${redisRetries - 1}`);
                 redisRetries -= 1;
                 if (redisRetries === 0) throw error;
                 await new Promise(res => setTimeout(res, 3000));

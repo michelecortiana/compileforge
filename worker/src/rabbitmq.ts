@@ -36,7 +36,7 @@ export const closeBroker = async () => {
     try {
         if (channel) await channel.close();
         if (connection) await connection.close();
-        console.log('🔌 Connessione RabbitMQ chiusa.');
+        console.log(' Connessione RabbitMQ chiusa.');
     } catch (err) {
         console.error('Errore durante la chiusura di RabbitMQ:', err);
     }
