@@ -14,10 +14,10 @@ jobs:
     - name: Checkout del codice
       uses: actions/checkout@v4
       - name: Build e Test della UI (Frontend)
-      working-directory: ./ui
-      run: |
-        npm ci
-        npm run build
+        working-directory: ./ui
+        run: |
+          npm ci
+          npm run build
 
     - name: Prepara file .env per i container
       run: |
