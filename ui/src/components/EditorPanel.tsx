@@ -60,41 +60,31 @@ const EditorPanel = ({ code, setCode, theme, status, output }: EditorPanelProps)
     }
   }, [status, output, monaco]);
 
-  // Funzione helper aggiornata con tutte le limitazioni del compilatore
   const checkUnsupportedConstructs = (text: string) => {
     const unsupported = [];
     
-    // 👇 IL TRUCCO: Rimuoviamo i commenti // e le stringhe "..." prima di analizzare!
-    let cleanText = text.replace(/\/\/.*$/gm, ''); // Rimuove commenti a singola riga
-    cleanText = cleanText.replace(/"[^"]*"/g, '');  // Rimuove il contenuto delle stringhe
-    
-    // Preprocessore
+    let cleanText = text.replace(/\/\/.*$/gm, ''); 
+    cleanText = cleanText.replace(/"[^"]*"/g, '');  
+
     if (/#(include|define|ifdef|pragma)\b/.test(cleanText)) unsupported.push('Preprocessore (#)');
-    
-    // Commenti multilinea (Questo lo controlliamo sul testo ORIGINALE apposta)
     if (/\/\*/.test(text)) unsupported.push('Commenti multilinea (/* */)');
     
-    // Tipi, Booleani e Qualificatori
     if (/\bunsigned\b/.test(cleanText)) unsupported.push('Tipi unsigned');
     if (/\b(bool|_Bool|true|false)\b/.test(cleanText)) unsupported.push('Booleani');
     if (/\b(enum|typedef|union)\b/.test(cleanText)) unsupported.push('Tipi custom (enum/typedef/union)');
     if (/\b(const|static|volatile)\b/.test(cleanText)) unsupported.push('Qualificatori (const/static/volatile)');
     if (/\bvoid\b/.test(cleanText)) unsupported.push('Tipo void');
     
-    // Array multidimensionali
     if (/\[\s*[^\]]*\s*\]\s*\[/.test(cleanText)) unsupported.push('Array multidimensionali');
     
-    // Operatori non supportati
     if (/\+\+/.test(cleanText)) unsupported.push('Operatore ++');
     if (/\+=/.test(cleanText)) unsupported.push('Operatore +=');
     if (/\?/.test(cleanText)) unsupported.push('Operatore ternario (?:)');
     if (/<<|>>|\^|\|(?!=|\|)/.test(cleanText)) unsupported.push('Operatori bit a bit');
     if (/!(?!=)/.test(cleanText)) unsupported.push('NOT logico standalone (!)');
     
-    // Controllo di flusso
     if (/\b(switch|case|do|goto)\b/.test(cleanText)) unsupported.push('switch/case/do/goto');
     
-    // Suffissi numerici
     if (/\b\d+(\.\d+)?[fFuUlL]+\b/.test(cleanText)) unsupported.push('Suffissi numerici (es. 1.5f)');
     
     if (unsupported.length > 0) {

@@ -12,11 +12,8 @@ export const jobsTable = pgTable('jobs', {
     createdAt: timestamp('created_at').defaultNow().notNull(),
     finishedAt: timestamp('finished_at'),
 }, (table) => {
-    // 👇 2. Aggiungi questo blocco per creare gli indici sulle colonne più interrogate
-    return {
+      return {
         createdAtIndex: index('created_at_idx').on(table.createdAt),
         statusIndex: index('status_idx').on(table.status),
-        // Se in futuro farai query che filtrano per status E ordinano per data, un indice composito è ancora meglio:
-        // statusCreatedAtIndex: index('status_created_at_idx').on(table.status, table.createdAt)
-    };
+        };
 });

@@ -13,10 +13,8 @@ jobs:
     steps:
     - name: Checkout del codice
       uses: actions/checkout@v4
-
-    # 👇 1. NUOVO FIX: Step per buildare la UI e intercettare errori TypeScript su React
-    - name: Build e Test della UI (Frontend)
-      working-directory: ./ui # <-- Cambia in '.' se React è nella cartella principale del repo
+      - name: Build e Test della UI (Frontend)
+      working-directory: ./ui
       run: |
         npm ci
         npm run build
@@ -31,9 +29,7 @@ jobs:
         echo "API_KEY=test-api-key-123" >> .env.docker
         echo "METRICS_TOKEN=test-metrics-token" >> .env.docker
         echo "HOST_TMP_DIR=/tmp/compileforge_ci" >> .env.docker
-        
-        # 👇 FIX: Esporta la variabile anche nell'ambiente di GitHub Actions per l'interpolazione del Compose
-        echo "HOST_TMP_DIR=/tmp/compileforge_ci" >> $GITHUB_ENV
+          echo "HOST_TMP_DIR=/tmp/compileforge_ci" >> $GITHUB_ENV
         
         mkdir -p /tmp/compileforge_ci
 
@@ -58,47 +54,40 @@ jobs:
 
     - name: Test d'Integrazione End-to-End (E2E)
       run: |
-        # 1. Invia il job al Gateway con la chiave di test
-        RESPONSE=$(curl -s -X POST http://localhost:8080/compile \
+          RESPONSE=$(curl -s -X POST http://localhost:8080/compile \
           -H "Content-Type: application/json" \
           -H "x-api-key: test-api-key-123" \
           -d '{
             "language": "c",
             "source_code": "int main() { return 0; }"
           }')
-
-        # 👇 2. FIX: Aggiunte le virgolette attorno a "$RESPONSE"
-        JOB_ID=$(echo "$RESPONSE" | jq -r '.job_id')
+          JOB_ID=$(echo "$RESPONSE" | jq -r '.job_id')
         
         if [ -z "$JOB_ID" ] || [ "$JOB_ID" == "null" ]; then
-          echo "❌ Errore: Nessun job_id restituito."
+          echo "Errore: Nessun job_id restituito."
           echo "Risposta Gateway: $RESPONSE"
           exit 1
         fi
         
-        echo "✅ Job inviato con successo. ID: $JOB_ID"
-
-        # 2. Polling per verificare lo status finale
-        MAX_ATTEMPTS=15
+        echo "Job inviato con successo. ID: $JOB_ID"
+          MAX_ATTEMPTS=15
         ATTEMPT=1
         STATUS="pending"
 
         while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
           STATUS_RESP=$(curl -s -X GET http://localhost:8080/status/$JOB_ID \
             -H "x-api-key: test-api-key-123")
-          
-          # 👇 2. FIX: Aggiunte le virgolette attorno a "$STATUS_RESP"
-          STATUS=$(echo "$STATUS_RESP" | jq -r '.status')
+            STATUS=$(echo "$STATUS_RESP" | jq -r '.status')
           
           echo "Tentativo $ATTEMPT: Stato = $STATUS"
           
           if [ "$STATUS" = "completed" ]; then
-            echo "✅ Test E2E superato! Compilazione andata a buon fine."
+            echo "Test E2E superato! Compilazione andata a buon fine."
             exit 0
           fi
           
           if [ "$STATUS" = "failed" ]; then
-            echo "❌ Test E2E fallito! La compilazione ha riportato un errore."
+            echo "Test E2E fallito! La compilazione ha riportato un errore."
             echo "Dettagli: $STATUS_RESP"
             exit 1
           fi
@@ -107,7 +96,7 @@ jobs:
           ATTEMPT=$((ATTEMPT+1))
         done
 
-        echo "❌ Timeout: Il job non è passato allo stato 'completed' in tempo utile."
+        echo "Timeout: Il job non è passato allo stato 'completed' in tempo utile."
         exit 1
 
     - name: Stampa log di Docker in caso di errore

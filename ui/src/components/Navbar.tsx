@@ -26,7 +26,6 @@ const CODE_SNIPPETS = [
 ];
 
 export default function Navbar({ onCompile, status, theme, onToggleTheme, onSelectSnippet, onOpenHistory, onOpenInfo }: NavbarProps) {
-  // 👇 FIX: Inseriti gli stati reali emessi dal worker ('processing' e 'connected')
   const isWorking = status === 'submitting' || status === 'pending' || status === 'processing' || status === 'connected'; 
   const isDark = theme === 'dark';
 

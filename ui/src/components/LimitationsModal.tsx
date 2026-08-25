@@ -12,7 +12,6 @@ export default function LimitationsModal({ onClose, theme }: LimitationsModalPro
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4">
       <div className={`relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl p-6 border ${isDark ? 'bg-gray-900 border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-800'}`}>
         
-        {/* Tasto X in alto a destra */}
         <button
           onClick={onClose}
           className={`absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full font-bold transition-transform hover:scale-110 ${isDark ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-gray-100 text-gray-500 hover:text-black'}`}
@@ -27,7 +26,6 @@ export default function LimitationsModal({ onClose, theme }: LimitationsModalPro
         </p>
 
         <div className="space-y-6 text-sm">
-          {/* Sezione 1 */}
           <section>
             <h3 className={`text-lg font-bold mb-2 ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>1. Preprocessor & Toolchain</h3>
             <ul className="list-disc pl-5 space-y-1">
@@ -38,7 +36,6 @@ export default function LimitationsModal({ onClose, theme }: LimitationsModalPro
             </ul>
           </section>
 
-          {/* Sezione 2 */}
           <section>
             <h3 className={`text-lg font-bold mb-2 ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>2. Types & Language Syntax</h3>
             <ul className="list-disc pl-5 space-y-1">
@@ -52,7 +49,6 @@ export default function LimitationsModal({ onClose, theme }: LimitationsModalPro
             </ul>
           </section>
 
-          {/* Sezione 3 */}
           <section>
             <h3 className={`text-lg font-bold mb-2 ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>3. Structs, Memory & ABI (x86-64 Linux)</h3>
             <ul className="list-disc pl-5 space-y-1">

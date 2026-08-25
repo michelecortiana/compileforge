@@ -1,20 +1,14 @@
-# ========================
-# Dipendenze Node.js
-# ========================
+#Dipendenze Node.js
 node_modules/
 
-# ========================
-# Variabili d'Ambiente e Segreti
-# ========================
-# Ignora tutti i file .env ovunque si trovino
+#Variabili d'Ambiente e Segreti
+#Ignora tutti i file .env ovunque si trovino
 .env
 .env.*
-# Eccezione: NON ignorare i file di esempio
+#Eccezione: NON ignorare i file di esempio
 !.env.example
 
-# ========================
-# File generati da TS/Compilazione
-# ========================
+#File generati da TS/Compilazione
 dist/
 build/
 out/
@@ -22,24 +16,18 @@ out/
 *.out
 *.exe
 
-# ========================
-# Log
-# ========================
+#Log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.log
 
-# ========================
-# File di Sistema e IDE
-# ========================
+#File di Sistema e IDE
 .DS_Store
 .vscode/
 .idea/
 worker-tmp/*
 
-# ========================
-# Segreti Esternalizzati
-# ========================
+#Segreti Esternalizzati
 secrets/*
 !secrets/*.example

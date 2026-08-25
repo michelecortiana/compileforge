@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import EditorPanel from './components/EditorPanel';
 import OutputPanel from './components/OutputPanel';
-// 👇 Importa il nuovo modale
 import LimitationsModal from './components/LimitationsModal';
 import { submitCode, listenForJobStatus, fetchRecentJobs, fetchJobDetails } from './services/apiClient';
 import type { JobStatusUpdate } from './services/apiClient';
@@ -29,12 +28,10 @@ function App() {
   const [metrics, setMetrics] = useState<{start?: string, end?: string}>({});
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
 
-  // === STATO MODALE STORICO E INFO ===
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyJobs, setHistoryJobs] = useState<JobStatusUpdate[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   
-  // 👇 STATO PER IL MODALE INFO (impostato a true per aprirlo all'avvio)
   const [showInfoModal, setShowInfoModal] = useState(true);
 
   useEffect(() => {
@@ -99,7 +96,6 @@ function App() {
     return () => cleanupSSE();
   }, [currentJobId]);
 
-  // === LOGICA CONDIVISIONE LINK ===
   useEffect(() => {
     const path = window.location.pathname;
     const match = path.match(/^\/j\/([a-zA-Z0-9-]+)$/);
@@ -108,8 +104,6 @@ function App() {
       loadJob(jobIdFromUrl);
     }
   }, []);
-
-  // === LOGICA STORICO JOB ===
   const openHistory = async () => {
     setIsHistoryOpen(true);
     setIsLoadingHistory(true);
@@ -165,7 +159,7 @@ function App() {
         onToggleTheme={toggleTheme}
         onSelectSnippet={handleSelectSnippet}
         onOpenHistory={openHistory}
-        onOpenInfo={() => setShowInfoModal(true)} // 👈 PASSA LA FUNZIONE ALLA NAVBAR
+        onOpenInfo={() => setShowInfoModal(true)} 
       />
       
       <div className="flex flex-1 overflow-hidden">
@@ -185,7 +179,6 @@ function App() {
         </div>
       </div>
 
-      {/* COMPONENTE MODALE STORICO */}
       {isHistoryOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
           <div className={`w-3/4 max-w-3xl rounded-lg shadow-xl flex flex-col max-h-[80vh] ${isDark ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
@@ -227,7 +220,6 @@ function App() {
         </div>
       )}
 
-      {/* 👇 NUOVO MODALE LIMITAZIONI */}
       {showInfoModal && (
         <LimitationsModal 
           onClose={() => setShowInfoModal(false)}

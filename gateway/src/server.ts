@@ -11,15 +11,11 @@ import cors from '@fastify/cors';
 import * as promClient from 'prom-client';
 const collectDefaultMetrics = promClient.collectDefaultMetrics;
 const Counter = promClient.Counter;
-// Il magico "as any" fa chiudere la bocca a TypeScript una volta per tutte
 const register = (promClient as any).register;
 import path from 'path';
 import fs from 'fs'; 
 import crypto from 'crypto';
 
-
-
-// === CONTROLLO DI SICUREZZA FAIL-FAST ===
 const API_KEY = process.env.API_KEY;
 if (!API_KEY) {
     throw new Error("ERRORE CRITICO: API_KEY non è definita nelle variabili d'ambiente.");
@@ -29,8 +25,7 @@ const METRICS_TOKEN = process.env.METRICS_TOKEN;
 if (!METRICS_TOKEN) {
     throw new Error("ERRORE CRITICO: METRICS_TOKEN non è definita nelle variabili d'ambiente.");
 }
-
-// Abilita le metriche di default di NodeJS (uso RAM, CPU, event loop)
+ 
 collectDefaultMetrics();
 
 const jobsSubmittedTotal = new Counter({
@@ -54,7 +49,6 @@ const app = Fastify({
     bodyLimit: 102400
 });
 
-// Regex semplice per validare il formato UUID nei parametri di route
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isValidUuid(value: string): boolean {
@@ -75,15 +69,11 @@ function safeCompare(input: string | undefined, secret: string): boolean {
     return crypto.timingSafeEqual(inputBuffer, secretBuffer);
 }
 async function apiRoutes(fastify: FastifyInstance) {
-
-    // === MIDDLEWARE DI AUTENTICAZIONE ===
-    // Controlla l'header x-api-key OPPURE il query parameter ?key=
     const requireApiKey = async (request: any, reply: any) => {
         const headerKeyRaw = request.headers['x-api-key'];
         const headerKey = Array.isArray(headerKeyRaw) ? headerKeyRaw[0] : headerKeyRaw;
         const queryKey = (request.query as { key?: string }).key;
         const API_KEY = process.env.API_KEY as string;
-        // 👇 4. USATO IL CONFRONTO A TEMPO COSTANTE
         const isValid = safeCompare(headerKey ?? '', API_KEY) || safeCompare(queryKey ?? '', API_KEY);
 
         if (!isValid) {
@@ -92,24 +82,16 @@ async function apiRoutes(fastify: FastifyInstance) {
         }
     };
 
-    // === HEALTH CHECK ENDPOINT (Rimane aperto per i sistemi di monitoraggio) ===
     fastify.get('/health', async (request, reply) => {
         try {
-            // 1. Ping al Database (esegue una query vuota leggerissima)
             await db.execute(sql`SELECT 1`);
-            
-            // 2. Ping a Redis
             await redisClient.ping();
             
-            // 3. Controllo RabbitMQ (CONTROLLO ATTIVO)
             if (!channel) {
                 throw new Error('Variabile canale RabbitMQ non inizializzata');
             }
-            // checkQueue verifica se la connessione è viva e se la coda esiste.
-            // Se il canale si è chiuso o RabbitMQ è irraggiungibile, lancerà un'eccezione.
             await channel.checkQueue('compile_jobs');
 
-            // Se arriviamo qui, l'infrastruttura sta benissimo!
             return reply.status(200).send({ 
                 status: 'ok', 
                 timestamp: new Date().toISOString(),
@@ -118,7 +100,6 @@ async function apiRoutes(fastify: FastifyInstance) {
 
         } catch (error: any) {
             request.log.error(`Health check fallito: ${error.message}`);
-            // Ritorna 503 (Service Unavailable) se anche solo un servizio è giù
             return reply.status(503).send({ 
                 status: 'error', 
                 message: 'Infrastruttura degradata',
@@ -133,14 +114,11 @@ async function apiRoutes(fastify: FastifyInstance) {
             required: ['source_code', 'language'],
             properties: {
                 source_code: { type: 'string', minLength: 1 },
-                // 👇 FIX: Ora accetta esclusivamente 'c' come valore
-                language: { type: 'string', enum: ['c'] }
+                  language: { type: 'string', enum: ['c'] }
             }
         }
     };
-
-    // 👇 Rotta protetta dal middleware
-    fastify.post('/compile', { schema: compileSchema, preHandler: requireApiKey }, async (request, reply) => {
+      fastify.post('/compile', { schema: compileSchema, preHandler: requireApiKey }, async (request, reply) => {
         jobsSubmittedTotal.inc(); 
 
         const body = request.body as { source_code: string; language: string };
@@ -177,9 +155,7 @@ async function apiRoutes(fastify: FastifyInstance) {
             });
         }
     });
-
-    // 👇 Rotta protetta dal middleware
-    fastify.get('/status/:job_id', { preHandler: requireApiKey }, async (request, reply) => {
+      fastify.get('/status/:job_id', { preHandler: requireApiKey }, async (request, reply) => {
         const { job_id } = request.params as { job_id: string };
         
         if (!isValidUuid(job_id)) {
@@ -199,9 +175,7 @@ async function apiRoutes(fastify: FastifyInstance) {
             if (!job) {
                 return reply.status(404).send({ error: 'Job non trovato' });
             }
-
-            // 👈 MAPPA I CAMPI DAL DB AL FORMATO ATTESO DAL FRONTEND
-            const formattedJob = {
+              const formattedJob = {
                 ...job,
                 output: job.output,
                 irCode: job.outputIr,
@@ -216,10 +190,7 @@ async function apiRoutes(fastify: FastifyInstance) {
             return reply.status(500).send({ error: 'Errore interno del server' });
         }
     });
-
-    // 👇 Rotta protetta dal middleware
-    // 👇 Rotta protetta dal middleware
-    fastify.get('/status/:job_id/stream', { preHandler: requireApiKey }, async (request, reply) => {
+        fastify.get('/status/:job_id/stream', { preHandler: requireApiKey }, async (request, reply) => {
         const { job_id } = request.params as { job_id: string };
 
         if (!isValidUuid(job_id)) {
@@ -261,12 +232,10 @@ async function apiRoutes(fastify: FastifyInstance) {
                 await subscriber.quit();
                 stream.end();
             } catch (err) {
-                fastify.log.error(err as Error, 'Errore chiusura stream SSE:'); // ✅ CORRETTO
+                fastify.log.error(err as Error, 'Errore chiusura stream SSE:'); 
             }
         };
-
-        // 1. Ci iscriviamo prima a Redis per non perdere nulla da questo momento in poi
-        await subscriber.subscribe(channelName);
+          await subscriber.subscribe(channelName);
 
         subscriber.on('message', (redisChannel: string, message: string) => {
             if (redisChannel === channelName) {
@@ -279,11 +248,7 @@ async function apiRoutes(fastify: FastifyInstance) {
                 } catch (e) { /* Ignora */ }
             }
         });
-
-        // 👇 FIX ANTI-RACE CONDITION: 
-        // Dopo l'iscrizione, rifacciamo un controllo lampo sul DB. 
-        // Se il worker ha finito il job proprio durante la fase di setup, lo becchiamo ora.
-        const [latestJob] = await db.select().from(jobsTable).where(eq(jobsTable.id, job_id));
+              const [latestJob] = await db.select().from(jobsTable).where(eq(jobsTable.id, job_id));
         if (latestJob && (latestJob.status === 'completed' || latestJob.status === 'failed')) {
             stream.write(`data: ${JSON.stringify(latestJob)}\n\n`);
             await cleanup();
@@ -296,34 +261,23 @@ async function apiRoutes(fastify: FastifyInstance) {
 
         return stream;
     });
-
-    // Endpoint Metriche (Già protetto col suo token specifico)
-    // Endpoint Metriche (Già protetto col suo token specifico)
-    fastify.get('/metrics', async (request, reply) => {
+        fastify.get('/metrics', async (request, reply) => {
         const authHeader = request.headers.authorization;
-        
-        // 👇 FIX: Usa safeCompare al posto dell'operatore !==
-        if (!safeCompare(authHeader, `Bearer ${METRICS_TOKEN}`)) {
+          if (!safeCompare(authHeader, `Bearer ${METRICS_TOKEN}`)) {
             request.log.warn('Tentativo di accesso non autorizzato a /metrics');
             return reply.status(401).send({ error: 'Unauthorized: Invalid metrics token' });
         }
-
-        // Usa register direttamente
-        reply.header('Content-Type', register.contentType);
+          reply.header('Content-Type', register.contentType);
         
         return reply.send(await register.metrics());
     });
-    
-    // 👇 Rotta protetta dal middleware
-    fastify.get('/download/:job_id', { preHandler: requireApiKey }, async (request, reply) => {
+      fastify.get('/download/:job_id', { preHandler: requireApiKey }, async (request, reply) => {
         const { job_id } = request.params as { job_id: string };
 
         if (!isValidUuid(job_id)) {
             return reply.status(400).send({ error: 'L\'ID del job deve essere un UUID valido' });
         }
-
-        // 👇 FIX 1: Cambiato in .out
-        const filePath = path.join('/app/downloads', `${job_id}.out`);
+          const filePath = path.join('/app/downloads', `${job_id}.out`);
 
         if (!fs.existsSync(filePath)) {
             request.log.error(`Tentativo di download fallito, file mancante: ${filePath}`);
@@ -331,8 +285,7 @@ async function apiRoutes(fastify: FastifyInstance) {
         }
 
         try {
-            // 👇 FIX 2: Cambiato il nome suggerito al browser in output.out
-            reply.header('Content-Disposition', 'attachment; filename="output.out"');
+              reply.header('Content-Disposition', 'attachment; filename="output.out"');
             reply.header('Content-Type', 'application/octet-stream'); 
 
             const stream = fs.createReadStream(filePath);
@@ -343,9 +296,7 @@ async function apiRoutes(fastify: FastifyInstance) {
             return reply.status(500).send({ error: 'Errore interno del server durante il download' });
         }
     });
-
-    // 👇 Nuova rotta per recuperare lo storico dei job
-    fastify.get('/jobs', { preHandler: requireApiKey }, async (request, reply) => {
+      fastify.get('/jobs', { preHandler: requireApiKey }, async (request, reply) => {
         const query = request.query as { limit?: string };
         const limit = Math.min(parseInt(query.limit || '20', 10), 50);
 
@@ -376,10 +327,10 @@ const start = async () => {
         while (dbRetries > 0) {
             try {
                 await db.execute(sql`SELECT 1`);
-                console.log('✅ Connessione a Postgres verificata');
+                console.log('Connessione a Postgres verificata');
                 break;
             } catch (error) {
-                console.error(`⏳ Errore connessione Postgres. Tentativi rimasti: ${dbRetries - 1}`);
+                console.error(`Errore connessione Postgres. Tentativi rimasti: ${dbRetries - 1}`);
                 dbRetries -= 1;
                 if (dbRetries === 0) throw error;
                 await new Promise(res => setTimeout(res, 3000));
@@ -390,7 +341,7 @@ const start = async () => {
         while (redisRetries > 0) {
             try {
                 await redisClient.ping();
-                console.log('✅ Connessione a Redis verificata');
+                console.log('Connessione a Redis verificata');
                 break;
             } catch (error) {
                 console.error(`⏳ Errore connessione Redis. Tentativi rimasti: ${redisRetries - 1}`);
@@ -400,23 +351,23 @@ const start = async () => {
             }
         }
 
-        console.log('⏳ Connessione a RabbitMQ in corso...');
+        console.log('Connessione a RabbitMQ in corso...');
         await initBroker(); 
-        console.log('✅ Connessione a RabbitMQ verificata');
+        console.log('Connessione a RabbitMQ verificata');
         
         await app.register(cors, {
             origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
             methods: ['GET', 'POST', 'OPTIONS'],
             allowedHeaders: ['Content-Type', 'x-api-key', 'Authorization']
         });
-        console.log('🌐 CORS abilitato per le comunicazioni cross-origin');
+        console.log('CORS abilitato per le comunicazioni cross-origin');
 
         await app.register(fastifyRateLimit, {
             max: 100,
             timeWindow: '1 minute',
             redis: redisClient
         });
-        console.log('🛡️ Rate Limiter attivato e agganciato a Redis');
+        console.log('Rate Limiter attivato e agganciato a Redis');
 
         await app.register(apiRoutes);
 
@@ -443,12 +394,12 @@ const shutdown = async (signal: string) => {
         await closeBroker();
 
         await pool.end();
-        console.log('🔌 Connessione Postgres chiusa.');
+        console.log('Connessione Postgres chiusa.');
 
         await redisClient.quit();
-        console.log('🔌 Connessione Redis chiusa.');
+        console.log('Connessione Redis chiusa.');
 
-        console.log('👋 Gateway spento con successo.');
+        console.log('Gateway spento con successo.');
         process.exit(0);
     } catch (err) {
         console.error('Errore durante lo spegnimento del Gateway:', err);

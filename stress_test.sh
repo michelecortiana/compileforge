@@ -1,8 +1,7 @@
 #!/bin/bash
-
 : "${API_KEY:?Devi esportare API_KEY prima di lanciare lo script, es: export API_KEY=xxxx}"
 
-echo "🚀 Lancio 50 job di compilazione in parallelo..."
+echo "Lancio 50 job di compilazione in parallelo..."
 > stress_results.log
 
 for i in {1..50}; do
@@ -17,4 +16,4 @@ done
 
 wait
 FAILED=$(grep -cv "202" stress_results.log)
-echo "✅ Fatto. Richieste non accettate (diverse da 202): $FAILED / 50"
+echo "Fatto. Richieste non accettate (diverse da 202): $FAILED / 50"

@@ -57,7 +57,6 @@ export function listenForJobStatus(
   let isClosedManually = false;
   let pollingInterval: any = null;
 
-  // Funzione di supporto per pulire tutto
   const cleanup = () => {
     isClosedManually = true;
     if (eventSource && eventSource.readyState !== EventSource.CLOSED) {
@@ -82,18 +81,15 @@ export function listenForJobStatus(
   };
 
   eventSource.onerror = (error) => {
-    console.warn("⚠️ Connessione SSE caduta. Avvio fallback di polling...", error);
+    console.warn("Connessione SSE caduta. Avvio fallback di polling...", error);
     
-    // Chiudiamo la SSE morta
     if (eventSource) {
       eventSource.close();
     }
 
     if (isClosedManually) return;
-
-    // --- STRATEGIA DI POLLING DI FALLBACK ---
     let attempts = 0;
-    const maxAttempts = 20; // Es. prova per 20 volte (ogni 2 secondi = 40 secondi totali)
+    const maxAttempts = 20; 
 
     pollingInterval = setInterval(async () => {
       if (isClosedManually) {
@@ -104,7 +100,7 @@ export function listenForJobStatus(
       attempts++;
       if (attempts > maxAttempts) {
         clearInterval(pollingInterval);
-        onError(error); // Arreso: passa l'errore al frontend
+        onError(error);
         return;
       }
 
@@ -113,18 +109,14 @@ export function listenForJobStatus(
         if (!response.ok) throw new Error('Polling fallito');
         
         const data: JobStatusUpdate = await response.json();
-        onUpdate(data); // Aggiorna lo stato nell'app esattamente come farebbe la SSE
-
-        // Se il job è terminato, interrompiamo il polling e chiudiamo
+        onUpdate(data); 
         if (data.status === 'completed' || data.status === 'failed') {
           cleanup();
         }
       } catch (pollErr) {
         console.error(`Tentativo di polling ${attempts}/${maxAttempts} fallito:`, pollErr);
       }
-    }, 2000); // Intervallo di 2 secondi tra una richiesta e l'altra
-
-    // Notifichiamo temporaneamente che siamo in modalità di recupero (opzionale)
+    }, 2000); 
     onUpdate({ status: 'connected', message: 'Connessione persa, recupero in corso (polling)...' });
   };
 
@@ -134,7 +126,6 @@ export function getDownloadUrl(jobId: string): string {
   return `${API_BASE_URL}/download/${jobId}?key=${API_KEY}`;
 }
 
-// 👇 NUOVO: Recupera la lista dei job recenti
 export async function fetchRecentJobs(limit: number = 20): Promise<JobStatusUpdate[]> {
   const response = await fetch(`${API_BASE_URL}/jobs?limit=${limit}`, {
     headers: { 'x-api-key': API_KEY }
@@ -143,7 +134,6 @@ export async function fetchRecentJobs(limit: number = 20): Promise<JobStatusUpda
   return response.json();
 }
 
-// 👇 NUOVO: Recupera tutti i dettagli di un singolo job
 export async function fetchJobDetails(jobId: string): Promise<JobStatusUpdate> {
   const response = await fetch(`${API_BASE_URL}/status/${jobId}?key=${API_KEY}`);
   if (!response.ok) throw new Error('Impossibile recuperare il job');

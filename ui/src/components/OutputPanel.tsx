@@ -69,14 +69,11 @@ export default function OutputPanel({ status, output, assembly, irCode, metrics,
   return (
     <div className={`flex flex-col h-full border-l ${isDark ? 'bg-[#0d1117] border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-800'}`}>
       
-      {/* Header con Badge di stato e Bottoni */}
       <div className={`flex justify-between items-center px-4 py-2 border-b shadow-sm ${isDark ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
         <div className="flex items-center gap-4">
           <h2 className={`text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
             Risultati
           </h2>
-          
-          {/* 👇 BLOCCO BOTTONI AGGIORNATO */}
           {jobId && status === 'completed' && (
             <div className="flex gap-2">
               <button
@@ -89,7 +86,7 @@ export default function OutputPanel({ status, output, assembly, irCode, metrics,
                       : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-300'
                 }`}
               >
-                {copied ? '✅ Link Copiato!' : '🔗 Condividi Job'}
+                {copied ? '✅Link Copiato!' : '🔗 Condividi Job'}
               </button>
 
               <a 
@@ -106,7 +103,6 @@ export default function OutputPanel({ status, output, assembly, irCode, metrics,
         </div>
       </div>
       
-      {/* Barra di navigazione dei Tab */}
       <div className={`flex border-b ${isDark ? 'bg-gray-900 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
         {renderTabButton('terminal', 'Terminale')}
         {renderTabButton('ir', 'IR Code')}
@@ -114,7 +110,6 @@ export default function OutputPanel({ status, output, assembly, irCode, metrics,
         {renderTabButton('metrics', 'Metriche')}
       </div>
       
-      {/* Area del contenuto */}
       <div className="flex-1 p-4 overflow-y-auto font-mono text-sm">
         
         {activeTab === 'terminal' && (

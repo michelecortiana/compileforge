@@ -6,18 +6,16 @@ if (!rabbitmqUrl) {
     throw new Error("ERRORE: RABBITMQ_URL non è definita nelle variabili d'ambiente. Il server non può avviarsi senza RabbitMQ.");
 }
 
-export let channel: any;       // Ora TypeScript lo capisce
-export let connection: any; // Ora TypeScript lo capisce
+export let channel: any;      
+export let connection: any; 
 
 export const initBroker = async () => {
     try {
-        connection = await amqp.connect(rabbitmqUrl); // 👈 MODIFICATO
+        connection = await amqp.connect(rabbitmqUrl);
         channel = await connection.createChannel();
         
-        // 1. Dichiariamo PRIMA la Dead Letter Queue
         await channel.assertQueue('compile_jobs_dlq', { durable: true });
 
-        // 2. Dichiariamo la coda principale
         await channel.assertQueue('compile_jobs', { 
             durable: true,
             arguments: {
@@ -34,7 +32,6 @@ export const initBroker = async () => {
     }
 };
 
-// 👇 NUOVO: Funzione per chiudere tutto pulitamente
 export const closeBroker = async () => {
     try {
         if (channel) await channel.close();

@@ -7,7 +7,6 @@ services:
       POSTGRES_PASSWORD: pass
       POSTGRES_DB: compileforge
     ports: 
-      # 👇 FIX: Solo connessioni locali
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -25,7 +24,6 @@ services:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: pass
     ports:
-      # 👇 FIX: Solo connessioni locali
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
       - "127.0.0.1:15692:15692"
@@ -43,7 +41,6 @@ services:
     container_name: redis
     restart: unless-stopped
     ports:
-      # 👇 FIX: Solo connessioni locali
       - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
@@ -61,7 +58,6 @@ services:
       - ./secrets/metrics_token.txt:/etc/secrets/metrics_token:ro
       - prometheus_data:/prometheus
     ports:
-      # 👇 FIX: Solo connessioni locali
       - "127.0.0.1:9091:9090"
 
   grafana:
@@ -75,15 +71,13 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
     ports:
-      # 👇 FIX: Solo connessioni locali
       - "127.0.0.1:3000:3000"
 
   gateway:
     build: ./gateway
     container_name: gateway
-    restart: unless-stopped  # 👈 AGGIUNGI QUESTA RIGA
+    restart: unless-stopped  
     ports:
-      # 👇 FIX: Solo connessioni locali
       - "127.0.0.1:8080:8080"
     env_file:
       - .env.docker
@@ -105,9 +99,8 @@ services:
   worker:
     build: ./worker
     container_name: worker
-    restart: unless-stopped  # 👈 AGGIUNGI QUESTA RIGA
+    restart: unless-stopped 
     ports:
-      # 👇 FIX: Solo connessioni locali
       - "127.0.0.1:9090:9090"
     env_file:
       - .env.docker

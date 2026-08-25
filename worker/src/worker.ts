@@ -1,6 +1,6 @@
 import 'dotenv/config';
 
-// 1. Inizializzazione: Importa i moduli nativi
+//Importa i moduli nativi
 import fs from 'fs/promises';
 import { exec } from 'child_process';
 import util from 'util';
@@ -9,8 +9,6 @@ import { eq } from 'drizzle-orm';
 import client from 'prom-client';
 import express from 'express';
 import crypto from 'crypto';
-
-// Ora questi moduli troveranno le variabili pronte all'uso
 import { initBroker, closeBroker, channel as rabbitChannel } from './rabbitmq';
 import { db, pool } from './db'; 
 import { jobsTable } from './schema';
@@ -33,7 +31,7 @@ function safeCompare(input: string | undefined, secret: string): boolean {
     return crypto.timingSafeEqual(inputBuffer, secretBuffer);
 }
 
-// === CONTROLLI DI SICUREZZA E VARIABILI GLOBALI ===
+//CONTROLLI DI SICUREZZA E VARIABILI GLOBALI
 const METRICS_TOKEN = process.env.METRICS_TOKEN;
 if (!METRICS_TOKEN) {
     throw new Error("ERRORE CRITICO: METRICS_TOKEN non è definita nelle variabili d'ambiente.");
@@ -45,7 +43,7 @@ if (!HOST_TMP_BASE) {
     throw new Error("ERRORE CRITICO: HOST_TMP_DIR non definita — necessaria per Docker-outside-of-Docker.");
 }
 
-// Variabili per tracciare lo stato di spegnimento
+//Variabili per tracciare lo stato di spegnimento
 let activeJobs = 0;
 let isShuttingDown = false;
 
@@ -63,19 +61,14 @@ const jobDurationHistogram = new client.Histogram({
   buckets: [0.1, 0.5, 1, 2, 5, 10]
 });
 
-// Mini-server per esporre le metriche
+//Mini-server per esporre le metriche
 const app = express();
-
-// 👇 AGGIUNGI QUESTE 3 RIGHE PER L'HEALTHCHECK DI DOCKER 👇
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
-// 👆 FINE AGGIUNTA 👆
 
 app.get('/metrics', async (req, res) => {
     const authHeader = req.headers.authorization;
-
-    // 👇 FIX: Usa safeCompare al posto dell'operatore !==
     if (!safeCompare(authHeader, `Bearer ${METRICS_TOKEN}`)) {
         console.warn('Tentativo di accesso non autorizzato a /metrics sul Worker');
         return res.status(401).send({ error: 'Unauthorized: Invalid metrics token' });
@@ -86,18 +79,14 @@ app.get('/metrics', async (req, res) => {
 });
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 9090;
-
-// Salviamo l'istanza del server per poterlo chiudere
 const metricsServer = app.listen(PORT, '0.0.0.0', () => console.log(`Worker metrics esposte su porta ${PORT}`));
 
 async function finalizeJob(jobId: string, status: 'failed', errorMessage: string) {
     console.log(`Finalizzazione job ${jobId} con stato: ${status}`);
-    
     if (status === 'failed') {
         jobResultsTotal.inc({ status: 'failed' });
     }
-    
-    // Aggiorna DB
+    //Aggiorna DB
     await db.update(jobsTable)
     .set({ 
         status, 
@@ -106,11 +95,8 @@ async function finalizeJob(jobId: string, status: 'failed', errorMessage: string
         finishedAt: new Date() 
     })
     .where(eq(jobsTable.id, jobId));
-
-    // 👇 AGGIUNGI QUESTA RIGA: Elimina la cache vecchia del Gateway
     await redisClient.del(`job_status:${jobId}`);
 
-    // Notifica Redis
     const updatePayload = JSON.stringify({
         jobId,
         status,
@@ -127,10 +113,10 @@ async function startWorker() {
         while (retries > 0) {
             try {
                 await initBroker();
-                console.log('✅ Connesso a RabbitMQ (Worker)!');
+                console.log('Connesso a RabbitMQ (Worker)!');
                 break;
             } catch (error) {
-                console.error(`⏳ Errore RabbitMQ nel Worker. Tentativi rimasti: ${retries - 1}`);
+                console.error(`Errore RabbitMQ nel Worker. Tentativi rimasti: ${retries - 1}`);
                 retries -= 1;
                 if (retries === 0) throw error;
                 await new Promise(res => setTimeout(res, 3000)); 
@@ -142,17 +128,14 @@ async function startWorker() {
         await rabbitChannel.prefetch(1);
         console.log('Worker avviato. In attesa di job nella coda "compile_jobs"...');
 
-        // Estraiamo il consumerTag per poter cancellare l'iscrizione
+        //Estre il consumerTag per poter cancellare l'iscrizione
         const { consumerTag } = await rabbitChannel.consume('compile_jobs', async (msg: any) => {
             if (!msg) return;
-
-            // Se stiamo spegnendo, rimettiamo in coda il job per un altro worker
             if (isShuttingDown) {
                 rabbitChannel.nack(msg, false, true); 
                 return;
             }
-
-            activeJobs++; // Registriamo che un job è in corso
+            activeJobs++; 
 
             let filePath = '';
             let outputDir = '';
@@ -161,12 +144,9 @@ async function startWorker() {
                 const jobData = JSON.parse(msg.content.toString());
                 const { jobId, sourceCode } = jobData;
                 
-                // 👇 AGGIUNGI IL CONTROLLO SICUREZZA UUID QUI 👇
                 if (!UUID_REGEX.test(jobId)) {
                     throw new Error(`Rilevato jobId malformato o potenziale tentativo di iniezione: ${jobId}`);
-                }
-                // 👆 FINE CONTROLLO 👆
-                
+                }                
                 console.log(`Elaborazione Job ID: ${jobId} iniziata...`);
                 
                 const endTimer = jobDurationHistogram.startTimer();
@@ -181,10 +161,7 @@ async function startWorker() {
                 await fs.mkdir(outputDir, { recursive: true });
                 await fs.mkdir(downloadDir, { recursive: true }); 
                 
-                // 👇 SOSTITUISCI EXECASYNC CON FS.CHMOD NATIVO 👇
                 await fs.chmod(outputDir, 0o770);
-                // 👆 FINE SOSTITUZIONE 👆
-                // 👇 AGGIUNGI QUESTO BLOCCO: Notifica lo stato intermedio "processing" alla UI
                 await db.update(jobsTable)
                     .set({ status: 'processing' })
                     .where(eq(jobsTable.id, jobId));
@@ -194,7 +171,6 @@ async function startWorker() {
                     status: 'processing',
                     message: 'Compilazione in corso...'
                 }));
-                // 👆 FINE BLOCCO AGGIUNTO
 
                 const timeoutMs = 10000;
                 const containerName = `runner-${jobId}`;
@@ -204,10 +180,10 @@ async function startWorker() {
 
                 const command = `docker run --rm --name ${containerName} --memory=256m --cpus=0.5 ` +
                 `--user ${process.getuid ? process.getuid() : 1000}:${process.getgid ? process.getgid() : 1000} ` + // 👈 INIETTA L'UID/GID DEL WORKER
-                `--network none ` +                  // 🔒 BLOCCO TOTALE: Niente internet o rete interna
-                `--pids-limit 64 ` +                 // 🔒 ANTI-BOMB: Massimo 64 processi attivi
-                `--cap-drop ALL ` +                  // 🔒 DROP PRIVILEGES: Rimuove tutte le "capabilities" di Linux
-                `--security-opt no-new-privileges ` + // 🔒 NO ESCALATION: Impedisce di acquisire nuovi permessi
+                `--network none ` +                 
+                `--pids-limit 64 ` +                 
+                `--cap-drop ALL ` +                  
+                `--security-opt no-new-privileges ` + 
                 `-v ${hostFilePath}:/input/code.c:ro ` +
                 `-v ${hostOutputDir}:/app ` +
                 `-w /app ` +  
@@ -226,7 +202,6 @@ async function startWorker() {
                         finalOutput = `Errore: Tempo limite di esecuzione (${timeoutMs}ms) superato.`;
                     }
                 } finally {
-                    // 👇 NUOVO: Forza la rimozione del container anche se il client docker è andato in timeout
                     await execAsync(`docker rm -f ${containerName}`).catch(() => {});
                 }
 
@@ -242,13 +217,8 @@ async function startWorker() {
                         finalOutput += '\nErrore: Il compilatore non ha prodotto i file attesi.';
                     } else {
                         try {
-                            // 👇 MODIFICA AL NAMING .exe -> .out
-                            // Manteniamo 'output.exe' per leggere quello che genera nativamente la tua immagine
                             const binPath = path.join(outputDir, 'output.exe'); 
-                            
-                            // Ma lo salviamo come '.out' nei download per il Gateway
                             const destPath = path.join(downloadDir, `${jobId}.out`); 
-                            
                             await fs.copyFile(binPath, destPath);
                         } catch (e) {
                             console.warn("Eseguibile non trovato, errore nel linking.");
@@ -265,7 +235,6 @@ async function startWorker() {
                 }
                 endTimer(); 
 
-                // 👇 QUESTO È L'UPDATE CORRETTO CON TUTTI I CAMPI
                 await db.update(jobsTable)
                     .set({ 
                         status: finalStatus, 
@@ -277,7 +246,6 @@ async function startWorker() {
                     })
                     .where(eq(jobsTable.id, jobId));
 
-                // 👇 AGGIUNGI QUESTA RIGA: Invalida la cache anche qui
                 await redisClient.del(`job_status:${jobId}`);
 
                 const updatePayload = JSON.stringify({
@@ -308,8 +276,6 @@ async function startWorker() {
 
                 if (retryCount < 3) {
                     console.log(`Tentativo ${retryCount + 1}/3 fallito per Job ID: ${failedJobId}.`);
-                    
-                    // 👇 Aggiungi questo delay (es. 1 secondo * retryCount)
                     await new Promise(res => setTimeout(res, 1000 * (retryCount + 1)));
                 
                     rabbitChannel.publish('', 'compile_jobs', msg.content, {
@@ -318,8 +284,6 @@ async function startWorker() {
                     rabbitChannel.ack(msg);
                 } else {
                     console.error(`Job ID: ${failedJobId} fallito per 3 volte. Spostamento definitivo in DLQ.`);
-                    
-                    // 👇 FIX: Evitiamo query al DB se l'ID è sconosciuto/invalido (es. JSON corrotto)
                     if (failedJobId !== 'Sconosciuto') {
                         try {
                             await finalizeJob(failedJobId, 'failed', 'Job fallito dopo 3 tentativi (DLQ)');
@@ -327,14 +291,13 @@ async function startWorker() {
                             console.error('Errore durante la finalizzazione del job in DLQ:', finalizeError);
                         }
                     } else {
-                        // Log speciale per il caso critico del payload malformato
-                        console.error('🚨 IMPOSSIBILE FINALIZZARE NEL DB: Messaggio irrecuperabile o malformato. Payload originale:', msg.content.toString());
+                        console.error('IMPOSSIBILE FINALIZZARE NEL DB: Messaggio irrecuperabile o malformato. Payload originale:', msg.content.toString());
                     }
 
                     rabbitChannel.nack(msg, false, false); 
                 }
             } finally {
-                activeJobs--; // Rimuoviamo il job dai processi in corso
+                activeJobs--; 
                 if (filePath) {
                     await fs.unlink(filePath).catch(() => console.warn(`Nessun file ${filePath} da pulire.`));
                 }
@@ -343,24 +306,18 @@ async function startWorker() {
                 }
             }
         }, { noAck: false });
-
-        // === 👇 INIZIO LOGICA GRACEFUL SHUTDOWN 👇 ===
         const shutdown = async (signal: string) => {
-            console.log(`\n🛑 Ricevuto segnale ${signal}. Avvio spegnimento pulito (Graceful Shutdown)...`);
+            console.log(`\nRicevuto segnale ${signal}. Avvio spegnimento pulito (Graceful Shutdown)...`);
             isShuttingDown = true;
 
-            // 1. Chiudi il server delle metriche
             if (metricsServer) {
                 metricsServer.close(() => console.log('🔌 Server metriche chiuso.'));
             }
 
-            // 2. Smetti di accettare nuovi job
             if (rabbitChannel && consumerTag) {
                 await rabbitChannel.cancel(consumerTag);
-                console.log('🛑 Stop ricezione nuovi job da RabbitMQ.');
+                console.log('Stop ricezione nuovi job da RabbitMQ.');
             }
-
-            // 3. Aspetta la fine del job in corso (max 15 secondi)
             const timeout = 15000; 
             const startWait = Date.now();
             while (activeJobs > 0 && (Date.now() - startWait) < timeout) {
@@ -369,12 +326,11 @@ async function startWorker() {
             }
 
             if (activeJobs > 0) {
-                console.warn(`⚠️ Spegnimento forzato: ${activeJobs} job non terminati in tempo.`);
+                console.warn(`Spegnimento forzato: ${activeJobs} job non terminati in tempo.`);
             } else {
-                console.log('✅ Tutti i job in corso sono terminati correttamente.');
+                console.log('Tutti i job in corso sono terminati correttamente.');
             }
 
-            // 4. Disconnetti in modo sicuro i database
             await closeBroker();
             await pool.end();
             console.log('🔌 Connessione Postgres chiusa.');
@@ -385,10 +341,8 @@ async function startWorker() {
             process.exit(0);
         };
 
-        // Aggancia la funzione di spegnimento ai comandi di arresto del sistema
-        process.on('SIGINT', () => shutdown('SIGINT'));   // CTRL+C
-        process.on('SIGTERM', () => shutdown('SIGTERM')); // Docker stop
-        // === 👆 FINE LOGICA GRACEFUL SHUTDOWN 👆 ===
+        process.on('SIGINT', () => shutdown('SIGINT'));   
+        process.on('SIGTERM', () => shutdown('SIGTERM')); 
 
     } catch (error) {
         console.error("Impossibile avviare il Worker:", error);
