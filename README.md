@@ -27,8 +27,8 @@
   - [Prerequisites](#prerequisites)
   - [1. Clone the Repository](#1-clone-the-repository)
   - [2. Run the Automated Setup](#2-run-the-automated-setup)
-  - [3. Run the UI (Development Mode)](#3-run-the-ui-development-mode)
-  - [4. Submit Your First Compile Job](#4-submit-your-first-compile-job)
+  - [3. Submit Your First Compile Job](#3-submit-your-first-compile-job)
+  - [UI Development Mode (Optional)](#ui-development-mode-optional)
 - [Environment Variables Reference](#environment-variables-reference)
 - [Load Testing](#load-testing)
 - [API Reference](#api-reference)
@@ -162,7 +162,7 @@ Compiling and executing arbitrary, untrusted C code is inherently dangerous. To 
 ### 1. Local-Only by Design
 CompileForge is explicitly designed to be a local-only tool. It is **not** meant to be deployed on a public-facing server.
 * All exposed ports in `docker-compose.yml` are strictly bound to the loopback
-  interface (`127.0.0.1`) — covering every service (Gateway, Worker, Postgres,
+  interface (`127.0.0.1`) — covering every service (UI, Gateway, Worker, Postgres,
   RabbitMQ, Redis, Prometheus, and Grafana).
 * The infrastructure is accessible only from your local machine, completely preventing LAN or WAN access.
 
@@ -181,14 +181,15 @@ Each `compiler-image` container is severely neutered using the following runtime
 ### 3. API Key Authentication
 Even within the local environment, all interactions with the Gateway (such as submitting a job via `POST /compile` or polling via `GET /status/:id`) are protected by a mandatory API Key (`x-api-key` header). Unauthorized requests are immediately rejected by the Fastify server.
 
-> **Note:** Since the UI is a client-side SPA, the API key is embedded in the built JavaScript bundle. This is an accepted trade-off for a local, single-user tool — the key must never be reused if this project is ever adapted for a shared or public deployment.
+> **Note:** Since the UI is a client-side SPA, the API key is embedded in the built JavaScript bundle (whether built by Vite dev-mode or baked into the production image at Docker build time). This is an accepted trade-off for a local, single-user tool — the key must never be reused if this project is ever adapted for a shared or public deployment.
 
 <a name="4-secrets-management"></a>
 ### 4. Secrets Management
 Sensitive credentials (database passwords, message broker logins, API keys, and Prometheus metrics tokens) are securely managed and actively excluded from version control via `.gitignore`.
 * The repository provides `.example` templates.
-* Users must manually generate their own secure credentials and inject them via `.env` (for host-level scripts), `.env.docker` (for the Compose stack), and `ui/.env.local` (for the React UI).
+* Users must manually generate their own secure credentials and inject them via `.env` (for host-level scripts and Docker Compose interpolation), `.env.docker` (for the Gateway/Worker containers), and `ui/.env.local` (for UI development mode).
 * Prometheus authentication relies on a securely mounted file (`secrets/metrics_token.txt`) mapped directly into the container as a read-only volume.
+* `setup.sh` handles generating and wiring all of the above automatically — see [Run the Automated Setup](#2-run-the-automated-setup).
 
 <a name="5-least-privilege-containers"></a>
 ### 5. Least-Privilege Containers
@@ -218,7 +219,7 @@ The pre-provisioned dashboard gives you real-time insights into the system's cor
 
 <a name="accessing-grafana"></a>
 ### Accessing Grafana
-1. Once the infrastructure is running (see [Launch the Infrastructure](#4-launch-the-infrastructure)), open **http://localhost:3000** in your browser.
+1. Once the infrastructure is running (see [Run the Automated Setup](#2-run-the-automated-setup)), open **http://localhost:3000** in your browser.
 2. Log in with the default credentials configured in `docker-compose.yml`: `admin` / `admin`. Grafana will prompt you to set a new password on first login — safe to skip for a local-only setup, or set your own if you prefer.
 3. The Prometheus datasource and the **CompileForge Metrics** dashboard are already provisioned automatically — no manual setup required. From the left sidebar, go to **Dashboards → CompileForge Metrics**.
 4. Submit a few compile jobs from the UI, then watch the dashboard update (it refreshes automatically every 30 seconds, or click the refresh icon top-right for an instant update).
@@ -232,7 +233,7 @@ CompileForge is built on a modern, robust stack designed for high-performance as
 
 | Category | Technology |
 | :--- | :--- |
-| **Frontend UI** | React, TypeScript, Monaco Editor, Tailwind CSS |
+| **Frontend UI** | React, TypeScript, Monaco Editor, Tailwind CSS — served via Nginx in production, Vite in development |
 | **API Gateway** | Node.js, Fastify, TypeScript |
 | **Database & ORM** | PostgreSQL, Drizzle ORM |
 | **Message Broker** | RabbitMQ |
@@ -246,18 +247,19 @@ CompileForge is built on a modern, robust stack designed for high-performance as
 <a name="prerequisites"></a>
 ### Prerequisites
 * **Docker & Docker Compose V2:** required — this project uses `depends_on` health conditions that are not supported by the legacy `docker-compose` v1 binary.
-* **Node.js (v18+):** *Optional*, required only to run the React frontend locally in development mode.
+* **openssl & curl:** required by `setup.sh` to generate secrets and wait for the Gateway to become healthy. Both are pre-installed on virtually every Linux distro, WSL, and macOS.
+* **Node.js (v18+):** *Optional*, only needed if you want to run the UI in hot-reload development mode instead of the containerized production build.
 
 <a name="1-clone-the-repository"></a>
 ### 1. Clone the Repository
 ```bash
-git clone [https://github.com/michelecortiana/compileforge.git](https://github.com/michelecortiana/compileforge.git)
+git clone https://github.com/michelecortiana/compileforge.git
 cd compileforge
 ```
 
 <a name="2-run-the-automated-setup"></a>
 ### 2. Run the Automated Setup
-CompileForge includes an automated Bash script that handles all the heavy lifting. It generates secure cryptographic API keys and tokens, writes the necessary `.env` files, builds the isolated compiler image, launches the microservices, and synchronizes the database schema.
+CompileForge includes an automated Bash script that handles everything: it generates secure cryptographic API keys and tokens, writes the necessary `.env` files, builds the isolated compiler image, builds and launches the **entire** microservices stack — including the UI itself, served by its own containerized Nginx — and synchronizes the database schema.
 
 Make the script executable and run it:
 ```bash
@@ -265,35 +267,38 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
+When it finishes, the whole application is already running. Open **http://localhost:5173** — there is no separate step to start the UI.
+
 > **Note on Passwords:** The script dynamically generates secure `API_KEY` and `METRICS_TOKEN` values. However, the internal database (Postgres), message broker (RabbitMQ), and Grafana rely on the hardcoded default passwords (`admin`/`pass` or `admin`/`admin`) defined in `docker-compose.yml`. Because the entire infrastructure is strictly bound to `127.0.0.1` and isolated by design, this is perfectly safe for a local development environment.
 
-<a name="3-run-the-ui-development-mode"></a>
-### 3. Run the UI (Development Mode)
-Open a new terminal window, navigate to the frontend directory, install the dependencies, and start the React development server:
+<a name="3-submit-your-first-compile-job"></a>
+### 3. Submit Your First Compile Job
+Open your browser and navigate to `http://localhost:5173`. Write your C code in the editor, hit the compile button, and watch the microservices seamlessly queue, sandbox, compile, and return your x86-64 assembly and executable!
+
+<a name="ui-development-mode-optional"></a>
+### UI Development Mode (Optional)
+The `setup.sh` script gives you a production-style build of the UI running in its own container — great to just use the app, but rebuilding the container on every code change is slow if you're actively developing the frontend. For hot-reload development instead, run the Vite dev server directly on your machine:
 ```bash
 cd ui
 npm install
 npm run dev
 ```
-
-<a name="4-submit-your-first-compile-job"></a>
-### 4. Submit Your First Compile Job
-Open your browser and navigate to `http://localhost:5173`. Write your C code in the editor, hit the compile button, and watch the microservices seamlessly queue, sandbox, compile, and return your x86-64 assembly and executable!
+Then open `http://localhost:5173` as usual — Vite's dev server binds to the same port, so stop the containerized UI first (`docker compose stop ui`) to avoid a port conflict. This uses the same `ui/.env.local` that `setup.sh` already generated for you.
 
 <a name="environment-variables-reference"></a>
 ## Environment Variables Reference
 
 | Variable | File | Used by | Description |
 |---|---|---|---|
-| `API_KEY` | `.env.docker` | Gateway | Shared secret required in `x-api-key` header for all Gateway requests |
+| `API_KEY` | `.env` (root), `.env.docker` | Gateway, UI (as a Docker build arg) | Shared secret required in `x-api-key` header for all Gateway requests. Present in the root `.env` specifically so Docker Compose can pass it into the UI image as a build arg — see [UI Development Mode](#ui-development-mode-optional) above. |
 | `METRICS_TOKEN` | `.env.docker`, `secrets/metrics_token.txt` | Gateway, Worker, Prometheus | Bearer token securing `/metrics` endpoints |
 | `DATABASE_URL` | `.env.docker` | Gateway, Worker | Postgres connection string |
 | `REDIS_URL` | `.env.docker` | Gateway, Worker | Redis connection string (Pub/Sub) |
 | `RABBITMQ_URL` | `.env.docker` | Gateway, Worker | RabbitMQ connection string |
 | `ALLOWED_ORIGINS` | `.env.docker` | Gateway | CORS origin allow-list (defaults to the local UI dev server) |
-| `HOST_TMP_DIR` | `.env` (root) | Worker | Absolute **host** path bind-mounted into the Worker, used by Docker-outside-of-Docker to share compile artifacts with the sandboxed compiler container |
-| `VITE_API_BASE_URL` | `ui/.env.local` | UI | Gateway base URL the browser talks to |
-| `VITE_API_KEY` | `ui/.env.local` | UI | Same value as `API_KEY` — embedded in the client bundle (see [Security Model](#security-model)) |
+| `HOST_TMP_DIR` | `.env` (root), `.env.docker` | Worker | Absolute **host** path bind-mounted into the Worker, used by Docker-outside-of-Docker to share compile artifacts with the sandboxed compiler container |
+| `VITE_API_KEY` | Docker build arg (production), `ui/.env.local` (dev mode) | UI | Same value as `API_KEY`. In production it's baked into the JS bundle at **image build time** via a Compose build arg — not a runtime environment variable, since Vite inlines `VITE_*` values during `npm run build`. Rebuilding the UI image (`docker compose up -d --build ui`) is required after rotating this key. |
+| `VITE_API_BASE_URL` | Docker build arg (production), `ui/.env.local` (dev mode) | UI | Gateway base URL the browser talks to |
 
 <a name="load-testing"></a>
 ## Load Testing
@@ -335,6 +340,15 @@ The automated workflow validates both the codebase and the infrastructure by per
 <a name="troubleshooting"></a>
 ## Troubleshooting
 
+**Secrets out of sync across `.env` files (e.g. after editing one manually)**
+Run `./setup.sh --reset` to wipe and regenerate all `.env` files and secrets consistently in one shot.
+
+**`setup.sh` fails with "Gateway did not become healthy in time"**
+Run `docker compose logs gateway` to see why — commonly a stale container from a previous run holding a port, or Postgres/RabbitMQ not finishing their own health check first. Try `docker compose down -v` and re-run `./setup.sh`.
+
+**UI loads but every request fails with 401 Unauthorized**
+The UI container was built with a different `API_KEY` than the one the Gateway currently has (e.g. you edited `.env.docker` by hand after the UI image was already built). Since Vite bakes `VITE_API_KEY` into the JS bundle at build time, restarting the container is not enough — rebuild it: `docker compose up -d --build ui`. Running `./setup.sh --reset` handles this automatically.
+
 **Prometheus dashboards are empty / Grafana panels show "No data"**
 `METRICS_TOKEN` in your `.env.docker` doesn't match the value in `secrets/metrics_token.txt` — they must be identical.
 
@@ -348,7 +362,7 @@ Make sure `/var/run/docker.sock` is mounted into the Worker container and that t
 Make sure you're on the `typescript` version pinned in `ui/package.json` — newer TypeScript majors are sometimes ahead of what `typescript-eslint` officially supports.
 
 **Ports already in use**
-All services bind to `127.0.0.1` on fixed ports (5432, 5672, 6379, 8080, 9090, 9091, 15672, 3000). If you already have Postgres/Redis/RabbitMQ running locally, override the conflicting port via the corresponding `${...}` variable in `docker-compose.yml`.
+All services bind to `127.0.0.1` on fixed ports (5432, 5672, 6379, 8080, 9090, 9091, 15672, 3000, 5173). If you already have Postgres/Redis/RabbitMQ running locally, override the conflicting port via the corresponding `${...}` variable in `docker-compose.yml`.
 
 <a name="project-structure"></a>
 ## Project Structure
@@ -362,12 +376,14 @@ compileforge/
 ├── gateway/                 # Fastify API server handling HTTP requests and SSE streaming
 ├── grafana-provisioning/    # Pre-configured Grafana dashboards and Prometheus datasources
 ├── secrets/                 # Git-ignored folder for Docker secrets (e.g., metrics tokens)
-├── ui/                      # React + Vite frontend application (TypeScript, Tailwind, Monaco)
+├── ui/                      # React + Vite frontend — Dockerfile + nginx.conf for production,
+│                             # Vite dev server for hot-reload development
 ├── worker/                  # Node.js worker consuming RabbitMQ and spawning DooD containers
 ├── worker-tmp/              # Host-mounted volume for temporary file sharing during compilation
-├── docker-compose.yml       # Core infrastructure orchestration
+├── docker-compose.yml       # Core infrastructure orchestration (including the UI service)
 ├── prometheus.yml           # Prometheus metrics scraping configuration
 ├── rabbitmq_enabled_plugins # RabbitMQ plugin configuration (e.g., for Prometheus integration)
+├── setup.sh                 # One-command automated setup: secrets, build, launch, DB sync
 ├── stress_test.sh           # Bash script for local load testing and E2E validation
 └── README.md
 ```
