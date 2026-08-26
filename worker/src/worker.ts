@@ -34,13 +34,13 @@ function safeCompare(input: string | undefined, secret: string): boolean {
 //CONTROLLI DI SICUREZZA E VARIABILI GLOBALI
 const METRICS_TOKEN = process.env.METRICS_TOKEN;
 if (!METRICS_TOKEN) {
-    throw new Error("ERRORE CRITICO: METRICS_TOKEN non è definita nelle variabili d'ambiente.");
+    throw new Error("ERRORE: METRICS_TOKEN non è definita nelle variabili d'ambiente.");
 }
 
 const CONTAINER_TMP_BASE = '/tmp/compileforge';
 const HOST_TMP_BASE = process.env.HOST_TMP_DIR; 
 if (!HOST_TMP_BASE) {
-    throw new Error("ERRORE CRITICO: HOST_TMP_DIR non definita — necessaria per Docker-outside-of-Docker.");
+    throw new Error("ERRORE: HOST_TMP_DIR non definita — necessaria per Docker-outside-of-Docker.");
 }
 
 //Variabili per tracciare lo stato di spegnimento
@@ -291,7 +291,7 @@ async function startWorker() {
                             console.error('Errore durante la finalizzazione del job in DLQ:', finalizeError);
                         }
                     } else {
-                        console.error('IMPOSSIBILE FINALIZZARE NEL DB: Messaggio irrecuperabile o malformato. Payload originale:', msg.content.toString());
+                        console.error('IMPOSSIBILE finalizzare nel db: Messaggio irrecuperabile o malformato. Payload originale:', msg.content.toString());
                     }
 
                     rabbitChannel.nack(msg, false, false); 

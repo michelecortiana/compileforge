@@ -18,12 +18,12 @@ import crypto from 'crypto';
 
 const API_KEY = process.env.API_KEY;
 if (!API_KEY) {
-    throw new Error("ERRORE CRITICO: API_KEY non è definita nelle variabili d'ambiente.");
+    throw new Error("ERRORE: API_KEY non è definita nelle variabili d'ambiente.");
 }
 
 const METRICS_TOKEN = process.env.METRICS_TOKEN;
 if (!METRICS_TOKEN) {
-    throw new Error("ERRORE CRITICO: METRICS_TOKEN non è definita nelle variabili d'ambiente.");
+    throw new Error("ERRORE: METRICS_TOKEN non è definita nelle variabili d'ambiente.");
 }
  
 collectDefaultMetrics();
@@ -377,7 +377,7 @@ const start = async () => {
         await app.listen({ port: PORT, host: HOST });
         app.log.info(`Gateway in ascolto su http://${HOST}:${PORT}`);
     } catch (err) {
-        console.error('ERRORE CRITICO DURANTE L\'AVVIO:', err);
+        console.error('ERRORE critico durante l\'avvio:', err);
         process.exit(1);
     }
 };
