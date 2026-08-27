@@ -15,6 +15,7 @@ out/
 *.o
 *.out
 *.exe
+*.txt
 
 #Log
 npm-debug.log*
